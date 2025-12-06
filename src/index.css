@@ -1,0 +1,49 @@
+/* src/index.css */
+
+/* Tailwind v4 core */
+@import "tailwindcss";
+
+/* Theme tokens */
+@theme {
+  --font-sans: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI",
+    sans-serif;
+}
+
+/* Base layer: single dark theme for the whole app */
+@layer base {
+  html,
+  body,
+  #root {
+    height: 100%;
+  }
+
+  body {
+    margin: 0;
+    font-family: var(--font-sans);
+    background-color: #020617; /* slate-950 */
+    color: #e5e7eb; /* slate-200 */
+  }
+}
+
+/* Shared layout helpers */
+@layer components {
+  .page-container {
+    @apply mx-auto max-w-6xl px-6 py-8 space-y-6;
+  }
+
+  .card-section {
+    @apply rounded-xl border border-slate-800 bg-slate-950/80 p-6 shadow-sm;
+  }
+
+  .card-section-header {
+    @apply mb-4 flex items-center justify-between;
+  }
+
+  .card-section-title {
+    @apply text-sm font-semibold text-slate-100;
+  }
+
+  .card-section-description {
+    @apply text-xs text-slate-400;
+  }
+}
