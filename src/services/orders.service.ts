@@ -5,6 +5,7 @@ import {
   getOrCreateCustomerByDisplayName,
   recomputeCustomerStats,
 } from "./customers.service";
+import { adjustStock } from "./inventory.service";
 
 const nowIso = () => new Date().toISOString();
 
@@ -256,7 +257,11 @@ export async function buildOrdersFromClaims(liveSessionId: string): Promise<{
         continue;
       }
 
-      const unitPrice = item.sellingPrice ?? 0;
+      const variantPrice =
+        claim.variantId && item.variants?.length
+          ? item.variants.find((v) => v.id === claim.variantId)?.sellingPrice
+          : undefined;
+      const unitPrice = variantPrice ?? item.sellingPrice ?? 0;
       const quantity = claim.quantity ?? 0;
       const lineSubtotal = unitPrice * quantity;
       const lineDiscount = 0;
@@ -278,6 +283,13 @@ export async function buildOrdersFromClaims(liveSessionId: string): Promise<{
 
       await db.orderLines.add(line);
       createdLines += 1;
+
+      // Move reserved stock to consumed (on-hand minus reserved) for this claim
+      await adjustStock(item.id, {
+        currentDelta: -quantity,
+        reservedDelta: -quantity,
+        variantId: claim.variantId,
+      });
     }
 
     // Recalculate totals for this order + update customer stats
@@ -285,4 +297,49 @@ export async function buildOrdersFromClaims(liveSessionId: string): Promise<{
   }
 
   return { createdOrders, createdLines };
+}
+
+/**
+ * Apply a manual discount (promo/adjustment) to an order.
+ * Uses promoDiscountTotal field so recalc will include it in grandTotal.
+ */
+export async function updateOrderDiscount(
+  orderId: string,
+  amount: number
+): Promise<Order> {
+  const order = await db.orders.get(orderId);
+  if (!order) {
+    throw new Error("Order not found");
+  }
+
+  const promoDiscountTotal = Math.max(0, amount);
+  const updated: Order = {
+    ...order,
+    promoDiscountTotal,
+    updatedAt: nowIso(),
+  };
+
+  await db.orders.put(updated);
+  return recalculateOrderTotals(orderId);
+}
+
+export async function updateOrderFees(
+  orderId: string,
+  patch: Partial<
+    Pick<Order, "shippingFee" | "codFee" | "otherFees" | "promoDiscountTotal">
+  >
+): Promise<Order> {
+  const order = await db.orders.get(orderId);
+  if (!order) {
+    throw new Error("Order not found");
+  }
+
+  const updated: Order = {
+    ...order,
+    ...patch,
+    updatedAt: nowIso(),
+  };
+
+  await db.orders.put(updated);
+  return recalculateOrderTotals(orderId);
 }

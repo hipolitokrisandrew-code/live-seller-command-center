@@ -1,12 +1,14 @@
-// src/pages/LiveSessionsPage.tsx
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import type { LiveSession } from "../core/types";
 import {
   createLiveSession,
   listLiveSessions,
   setLiveSessionStatus,
   updateLiveSession,
+  deleteLiveSession,
 } from "../services/liveSessions.service";
+import { PANEL_CLASS, INPUT_CLASS } from "../theme/classes";
+import { useNotification } from "../components/NotificationProvider";
 
 type PlatformFilter = "ALL" | LiveSession["platform"];
 type StatusFilter = "ALL" | LiveSession["status"];
@@ -15,6 +17,7 @@ interface FormState {
   id?: string;
   title: string;
   platform: LiveSession["platform"];
+  platformOther: string;
   channelName: string;
   targetRevenue: string;
   targetViewers: string;
@@ -25,16 +28,24 @@ const defaultForm: FormState = {
   id: undefined,
   title: "",
   platform: "FACEBOOK",
+  platformOther: "",
   channelName: "",
   targetRevenue: "",
   targetViewers: "",
   notes: "",
 };
 
+const FILTER_PANEL_CLASS = `${PANEL_CLASS} flex flex-wrap items-center gap-3 p-3 text-sm`;
+const TABLE_WRAPPER_CLASS = `${PANEL_CLASS} overflow-x-auto`;
+const TABLE_HEAD_CLASS =
+  "border-b border-slate-200 bg-slate-50 text-xs uppercase text-slate-600";
+const LABEL_CLASS =
+  "text-xs font-medium text-slate-700";
+
 function formatDateTime(iso?: string) {
-  if (!iso) return "—";
+  if (!iso) return "-";
   const date = new Date(iso);
-  if (Number.isNaN(date.getTime())) return "—";
+  if (Number.isNaN(date.getTime())) return "-";
   return date.toLocaleString("en-PH", {
     dateStyle: "medium",
     timeStyle: "short",
@@ -58,23 +69,23 @@ function renderStatusBadge(status: LiveSession["status"]) {
 
   switch (status) {
     case "PLANNED":
-      className += " bg-slate-500/10 text-slate-300";
+      className += " bg-slate-100 text-slate-700";
       label = "PLANNED";
       break;
     case "LIVE":
-      className += " bg-emerald-500/10 text-emerald-400";
+      className += " bg-emerald-100 text-emerald-700";
       label = "LIVE";
       break;
     case "PAUSED":
-      className += " bg-amber-500/10 text-amber-400";
+      className += " bg-amber-100 text-amber-700";
       label = "PAUSED";
       break;
     case "ENDED":
-      className += " bg-sky-500/10 text-sky-400";
+      className += " bg-sky-100 text-sky-700";
       label = "ENDED";
       break;
     case "CLOSED":
-      className += " bg-slate-700/40 text-slate-400";
+      className += " bg-slate-100 text-slate-700";
       label = "CLOSED";
       break;
   }
@@ -94,12 +105,10 @@ export function LiveSessionsPage() {
   const [form, setForm] = useState<FormState>(defaultForm);
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
+  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
+  const { notify } = useNotification();
 
-  useEffect(() => {
-    void refreshSessions();
-  }, []);
-
-  async function refreshSessions() {
+  const refreshSessions = useCallback(async () => {
     try {
       setLoading(true);
       const data = await listLiveSessions();
@@ -108,10 +117,15 @@ export function LiveSessionsPage() {
     } catch (err) {
       console.error(err);
       setError("Failed to load live sessions.");
+      notify("Failed to load live sessions", "error");
     } finally {
       setLoading(false);
     }
-  }
+  }, [notify]);
+
+  useEffect(() => {
+    void refreshSessions();
+  }, [refreshSessions]);
 
   function openCreateForm() {
     setForm(defaultForm);
@@ -125,6 +139,7 @@ export function LiveSessionsPage() {
       id: session.id,
       title: session.title,
       platform: session.platform,
+      platformOther: "",
       channelName: session.channelName,
       targetRevenue:
         session.targetRevenue != null ? String(session.targetRevenue) : "",
@@ -168,6 +183,13 @@ export function LiveSessionsPage() {
     const targetViewers = form.targetViewers
       ? Number(form.targetViewers)
       : undefined;
+    const otherPlatformNote =
+      form.platform === "OTHER" && form.platformOther.trim()
+        ? `Other platform: ${form.platformOther.trim()}`
+        : "";
+    const combinedNotes = [otherPlatformNote, form.notes.trim()]
+      .filter(Boolean)
+      .join("\n");
 
     try {
       if (isEditing && form.id) {
@@ -177,7 +199,7 @@ export function LiveSessionsPage() {
           channelName: form.channelName.trim(),
           targetRevenue,
           targetViewers,
-          notes: form.notes.trim() || undefined,
+          notes: combinedNotes || undefined,
         });
       } else {
         await createLiveSession({
@@ -186,15 +208,17 @@ export function LiveSessionsPage() {
           channelName: form.channelName.trim(),
           targetRevenue,
           targetViewers,
-          notes: form.notes.trim() || undefined,
+          notes: combinedNotes || undefined,
         });
       }
 
       await refreshSessions();
       setIsFormOpen(false);
+      notify(isEditing ? "Session updated" : "Session created", "success");
     } catch (err) {
       console.error(err);
       setError("Failed to save live session.");
+      notify("Failed to save live session", "error");
     }
   }
 
@@ -202,9 +226,29 @@ export function LiveSessionsPage() {
     try {
       await setLiveSessionStatus(id, status);
       await refreshSessions();
+      notify(`Status set to ${status}`, "success");
     } catch (err) {
       console.error(err);
       setError("Failed to update session status.");
+      notify("Failed to update session status", "error");
+    }
+  }
+
+  async function handleDeleteSession(session: LiveSession) {
+    if (confirmDeleteId !== session.id) {
+      setConfirmDeleteId(session.id);
+      return;
+    }
+    try {
+      await deleteLiveSession(session.id);
+      await refreshSessions();
+      notify("Live session permanently deleted", "success");
+    } catch (err) {
+      console.error(err);
+      setError("Failed to delete live session.");
+      notify("Failed to delete live session", "error");
+    } finally {
+      setConfirmDeleteId(null);
     }
   }
 
@@ -237,7 +281,7 @@ export function LiveSessionsPage() {
         key={key}
         type="button"
         onClick={() => void handleStatusChange(session.id, status)}
-        className="rounded-md border border-slate-700 px-2 py-1 text-[11px] text-slate-100 hover:bg-slate-800"
+        className="rounded-md border border-slate-200 px-2 py-1 text-[11px] text-slate-800 hover:bg-slate-100"
       >
         {label}
       </button>
@@ -255,17 +299,51 @@ export function LiveSessionsPage() {
       buttons.push(makeBtn("Close session", "CLOSED", "close"));
     }
 
-    // Edit is always allowed
     buttons.push(
       <button
         key="edit"
         type="button"
         onClick={() => openEditForm(session)}
-        className="rounded-md border border-slate-700 px-2 py-1 text-[11px] text-slate-200 hover:bg-slate-800"
+        className="rounded-md border border-slate-200 px-2 py-1 text-[11px] text-slate-800 hover:bg-slate-100"
       >
         Edit
       </button>
     );
+
+    if (confirmDeleteId === session.id) {
+      buttons.push(
+        <div key="confirm-delete" className="flex items-center gap-2">
+          <span className="text-[11px] font-medium text-rose-700">
+            Permanently delete?
+          </span>
+          <button
+            type="button"
+            onClick={() => void handleDeleteSession(session)}
+            className="rounded-md bg-rose-500 px-2 py-1 text-[11px] font-semibold text-white hover:bg-rose-600"
+          >
+            Confirm
+          </button>
+          <button
+            type="button"
+            onClick={() => setConfirmDeleteId(null)}
+            className="rounded-md border border-slate-200 px-2 py-1 text-[11px] text-slate-700 hover:bg-slate-100"
+          >
+            Cancel
+          </button>
+        </div>
+      );
+    } else {
+      buttons.push(
+        <button
+          key="delete"
+          type="button"
+          onClick={() => setConfirmDeleteId(session.id)}
+          className="rounded-md border border-rose-500 px-2 py-1 text-[11px] text-rose-700 hover:bg-rose-50"
+        >
+          Delete
+        </button>
+      );
+    }
 
     return <div className="flex flex-wrap justify-end gap-1">{buttons}</div>;
   }
@@ -274,10 +352,10 @@ export function LiveSessionsPage() {
     <div className="space-y-4">
       <div className="flex items-start justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-semibold text-slate-50">
+          <h1 className="text-2xl font-semibold text-slate-900">
             Live Sessions
           </h1>
-          <p className="text-sm text-slate-400">
+          <p className="text-sm text-slate-600">
             Planuhin at i-track ang bawat live: platform, target sales, at
             status (Planned, Live, Paused, Ended, Closed).
           </p>
@@ -286,33 +364,33 @@ export function LiveSessionsPage() {
         <button
           type="button"
           onClick={openCreateForm}
-          className="rounded-md bg-emerald-500 px-4 py-2 text-sm font-medium text-black shadow-sm hover:bg-emerald-600"
+          className="rounded-md bg-emerald-500 px-4 py-2 text-sm font-medium text-slate-950 shadow-sm hover:bg-emerald-600"
         >
           + New session
         </button>
       </div>
 
       {/* Filters */}
-      <div className="flex flex-wrap items-center gap-3 rounded-lg border border-slate-800 bg-slate-900/60 p-3 text-sm">
+      <div className={FILTER_PANEL_CLASS}>
         <div className="flex min-w-[220px] flex-1 items-center gap-2">
-          <span className="text-slate-400">Search:</span>
+          <span className="text-slate-600">Search:</span>
           <input
             type="text"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             placeholder="Title or channel name"
-            className="flex-1 rounded-md border border-slate-700 bg-slate-900 px-2 py-1 text-sm text-slate-100 placeholder:text-slate-500 focus:border-emerald-500 focus:outline-none"
+            className={`${INPUT_CLASS} flex-1`}
           />
         </div>
 
         <div className="flex items-center gap-2">
-          <span className="text-slate-400">Platform:</span>
+          <span className="text-slate-600">Platform:</span>
           <select
             value={platformFilter}
             onChange={(e) =>
               setPlatformFilter(e.target.value as PlatformFilter)
             }
-            className="rounded-md border border-slate-700 bg-slate-900 px-2 py-1 text-sm text-slate-100 focus:border-emerald-500 focus:outline-none"
+            className={INPUT_CLASS}
           >
             <option value="ALL">All</option>
             <option value="FACEBOOK">Facebook</option>
@@ -323,11 +401,11 @@ export function LiveSessionsPage() {
         </div>
 
         <div className="flex items-center gap-2">
-          <span className="text-slate-400">Status:</span>
+          <span className="text-slate-600">Status:</span>
           <select
             value={statusFilter}
             onChange={(e) => setStatusFilter(e.target.value as StatusFilter)}
-            className="rounded-md border border-slate-700 bg-slate-900 px-2 py-1 text-sm text-slate-100 focus:border-emerald-500 focus:outline-none"
+            className={INPUT_CLASS}
           >
             <option value="ALL">All</option>
             <option value="PLANNED">Planned</option>
@@ -340,15 +418,15 @@ export function LiveSessionsPage() {
       </div>
 
       {error && (
-        <div className="rounded-md border border-rose-500/60 bg-rose-950/40 px-3 py-2 text-sm text-rose-200">
+        <div className="rounded-md border border-rose-500/60 bg-rose-50 px-3 py-2 text-sm text-rose-700">
           {error}
         </div>
       )}
 
       {/* Sessions table */}
-      <div className="overflow-x-auto rounded-lg border border-slate-800 bg-slate-950/60">
+      <div className={TABLE_WRAPPER_CLASS}>
         <table className="min-w-full text-left text-sm">
-          <thead className="border-b border-slate-800 bg-slate-900/80 text-xs uppercase text-slate-400">
+          <thead className={TABLE_HEAD_CLASS}>
             <tr>
               <th className="px-3 py-2">Title</th>
               <th className="px-3 py-2">Platform</th>
@@ -365,19 +443,19 @@ export function LiveSessionsPage() {
               <tr>
                 <td
                   colSpan={8}
-                  className="px-3 py-6 text-center text-sm text-slate-400"
+                  className="px-3 py-6 text-center text-sm text-slate-600"
                 >
-                  Loading live sessions…
+                  Loading live sessions...
                 </td>
               </tr>
             ) : filteredSessions.length === 0 ? (
               <tr>
                 <td
                   colSpan={8}
-                  className="px-3 py-6 text-center text-sm text-slate-500"
+                  className="px-3 py-6 text-center text-sm text-slate-600"
                 >
-                  Walang sessions pa. Click &quot;New session&quot; para
-                  mag-setup ng unang live mo.
+                  Walang sessions pa. Click "New session" para mag-setup ng
+                  unang live mo.
                 </td>
               </tr>
             ) : (
@@ -386,39 +464,37 @@ export function LiveSessionsPage() {
                 return (
                   <tr
                     key={session.id}
-                    className="border-t border-slate-800 hover:bg-slate-900/60"
+                    className="border-t border-slate-200 hover:bg-slate-50"
                   >
-                    <td className="px-3 py-2 text-sm text-slate-100">
+                    <td className="px-3 py-2 text-sm text-slate-900">
                       {session.title}
                     </td>
-                    <td className="px-3 py-2 text-xs text-slate-300">
+                    <td className="px-3 py-2 text-xs text-slate-700">
                       {session.platform}
                     </td>
-                    <td className="px-3 py-2 text-xs text-slate-300">
+                    <td className="px-3 py-2 text-xs text-slate-700">
                       {session.channelName}
                     </td>
-                    <td className="px-3 py-2">
-                      {renderStatusBadge(session.status)}
-                    </td>
-                    <td className="px-3 py-2 text-xs text-slate-300">
+                    <td className="px-3 py-2">{renderStatusBadge(session.status)}</td>
+                    <td className="px-3 py-2 text-xs text-slate-700">
                       {session.startTime
                         ? formatDateTime(session.startTime)
-                        : "—"}
+                        : "-"}
                     </td>
-                    <td className="px-3 py-2 text-xs text-slate-300">
-                      {duration != null ? `${duration} min` : "—"}
+                    <td className="px-3 py-2 text-xs text-slate-700">
+                      {duration != null ? `${duration} min` : "-"}
                     </td>
-                    <td className="px-3 py-2 text-xs text-slate-300">
+                    <td className="px-3 py-2 text-xs text-slate-700">
                       {session.targetRevenue != null && (
                         <div>
                           Target sales:{" "}
-                          <span className="font-semibold">
+                          <span className="font-semibold text-slate-900">
                             ₱{session.targetRevenue.toLocaleString("en-PH")}
                           </span>
                         </div>
                       )}
                       {session.targetViewers != null && (
-                        <div className="text-[11px] text-slate-400">
+                        <div className="text-[11px] text-slate-500">
                           Target viewers: {session.targetViewers}
                         </div>
                       )}
@@ -436,14 +512,14 @@ export function LiveSessionsPage() {
 
       {/* Slide-over form */}
       {isFormOpen && (
-        <div className="fixed inset-0 z-20 flex items-center justify-end bg-black/40">
-          <div className="flex h-full w-full max-w-md flex-col border-l border-slate-800 bg-slate-950 p-4 shadow-2xl">
+        <div className="fixed inset-0 z-20 flex items-center justify-center bg-black/40 px-4">
+          <div className="flex h-[90vh] w-full max-w-3xl flex-col rounded-lg border border-slate-200 bg-white p-6 shadow-2xl">
             <div className="mb-3 flex items-center justify-between">
               <div>
-                <h2 className="text-lg font-semibold text-slate-50">
+                <h2 className="text-lg font-semibold text-slate-900">
                   {isEditing ? "Edit live session" : "New live session"}
                 </h2>
-                <p className="text-xs text-slate-400">
+                <p className="text-xs text-slate-600">
                   Lagyan ng malinaw na title para madaling i-link sa claims at
                   orders.
                 </p>
@@ -451,7 +527,7 @@ export function LiveSessionsPage() {
               <button
                 type="button"
                 onClick={closeForm}
-                className="rounded-md border border-slate-700 px-2 py-1 text-xs text-slate-300 hover:bg-slate-800"
+                className="rounded-md border border-slate-200 px-2 py-1 text-xs text-slate-700 hover:bg-slate-100"
               >
                 Close
               </button>
@@ -459,26 +535,22 @@ export function LiveSessionsPage() {
 
             <form
               onSubmit={handleFormSubmit}
-              className="flex flex-1 flex-col gap-3 overflow-y-auto scroll-thin"
+              className="flex flex-1 flex-col gap-3 overflow-y-auto"
             >
               <div className="space-y-1">
-                <label className="text-xs font-medium text-slate-200">
-                  Title
-                </label>
+                <label className={LABEL_CLASS}>Title</label>
                 <input
                   type="text"
                   value={form.title}
                   onChange={(e) => handleFormChange("title", e.target.value)}
                   required
-                  className="w-full rounded-md border border-slate-700 bg-slate-900 px-2 py-1 text-sm text-slate-100 focus:border-emerald-500 focus:outline-none"
-                  placeholder="FB Live – 8PM Dresses Sale"
+                  className={INPUT_CLASS}
+                  placeholder='FB Live "8PM Dresses Sale"'
                 />
               </div>
 
               <div className="space-y-1">
-                <label className="text-xs font-medium text-slate-200">
-                  Platform
-                </label>
+                <label className={LABEL_CLASS}>Platform</label>
                 <select
                   value={form.platform}
                   onChange={(e) =>
@@ -487,7 +559,7 @@ export function LiveSessionsPage() {
                       e.target.value as LiveSession["platform"]
                     )
                   }
-                  className="w-full rounded-md border border-slate-700 bg-slate-900 px-2 py-1 text-sm text-slate-100 focus:border-emerald-500 focus:outline-none"
+                  className={INPUT_CLASS}
                 >
                   <option value="FACEBOOK">Facebook Live</option>
                   <option value="TIKTOK">TikTok Live</option>
@@ -496,10 +568,23 @@ export function LiveSessionsPage() {
                 </select>
               </div>
 
+              {form.platform === "OTHER" && (
+                <div className="space-y-1">
+                  <label className={LABEL_CLASS}>Specify (optional)</label>
+                  <input
+                    type="text"
+                    value={form.platformOther}
+                    onChange={(e) =>
+                      handleFormChange("platformOther", e.target.value)
+                    }
+                    className={INPUT_CLASS}
+                    placeholder="Hal. Kumu, YouTube, IG Live"
+                  />
+                </div>
+              )}
+
               <div className="space-y-1">
-                <label className="text-xs font-medium text-slate-200">
-                  Channel / page name
-                </label>
+                <label className={LABEL_CLASS}>Channel / page name</label>
                 <input
                   type="text"
                   value={form.channelName}
@@ -507,14 +592,14 @@ export function LiveSessionsPage() {
                     handleFormChange("channelName", e.target.value)
                   }
                   required
-                  className="w-full rounded-md border border-slate-700 bg-slate-900 px-2 py-1 text-sm text-slate-100 focus:border-emerald-500 focus:outline-none"
+                  className={INPUT_CLASS}
                   placeholder="FB Page or TikTok shop name"
                 />
               </div>
 
               <div className="grid grid-cols-2 gap-3">
                 <div className="space-y-1">
-                  <label className="text-xs font-medium text-slate-200">
+                  <label className={LABEL_CLASS}>
                     Target sales (PHP, optional)
                   </label>
                   <input
@@ -524,11 +609,11 @@ export function LiveSessionsPage() {
                     onChange={(e) =>
                       handleFormChange("targetRevenue", e.target.value)
                     }
-                    className="w-full rounded-md border border-slate-700 bg-slate-900 px-2 py-1 text-sm text-slate-100 focus:border-emerald-500 focus:outline-none"
+                    className={INPUT_CLASS}
                   />
                 </div>
                 <div className="space-y-1">
-                  <label className="text-xs font-medium text-slate-200">
+                  <label className={LABEL_CLASS}>
                     Target viewers (optional)
                   </label>
                   <input
@@ -538,41 +623,39 @@ export function LiveSessionsPage() {
                     onChange={(e) =>
                       handleFormChange("targetViewers", e.target.value)
                     }
-                    className="w-full rounded-md border border-slate-700 bg-slate-900 px-2 py-1 text-sm text-slate-100 focus:border-emerald-500 focus:outline-none"
+                    className={INPUT_CLASS}
                   />
                 </div>
               </div>
 
               <div className="space-y-1">
-                <label className="text-xs font-medium text-slate-200">
-                  Notes (optional)
-                </label>
+                <label className={LABEL_CLASS}>Notes (optional)</label>
                 <textarea
                   value={form.notes}
                   onChange={(e) => handleFormChange("notes", e.target.value)}
                   rows={3}
-                  className="w-full rounded-md border border-slate-700 bg-slate-900 px-2 py-1 text-sm text-slate-100 focus:border-emerald-500 focus:outline-none"
+                  className={`${INPUT_CLASS} min-h-[90px]`}
                   placeholder="Promo details (Buy 3 free shipping, etc.)"
                 />
               </div>
 
               {error && (
-                <div className="rounded-md border border-rose-500/60 bg-rose-950/40 px-3 py-2 text-xs text-rose-200">
+                <div className="rounded-md border border-rose-500/60 bg-rose-50 px-3 py-2 text-xs text-rose-700">
                   {error}
                 </div>
               )}
 
-              <div className="mt-2 flex justify-end gap-2 border-t border-slate-800 pt-3">
+              <div className="mt-2 flex justify-end gap-2 border-t border-slate-200 pt-3">
                 <button
                   type="button"
                   onClick={closeForm}
-                  className="rounded-md border border-slate-700 px-3 py-1.5 text-xs font-medium text-slate-200 hover:bg-slate-800"
+                  className="rounded-md border border-slate-200 px-3 py-1.5 text-xs font-medium text-slate-800 hover:bg-slate-100"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
-                  className="rounded-md bg-emerald-500 px-3 py-1.5 text-xs font-semibold text-white hover:bg-emerald-600"
+                  className="rounded-md bg-emerald-500 px-3 py-1.5 text-xs font-semibold text-slate-950 hover:bg-emerald-600"
                 >
                   {isEditing ? "Save changes" : "Create session"}
                 </button>

@@ -1,4 +1,3 @@
-// src/pages/FinancePage.tsx
 import { useEffect, useMemo, useState } from "react";
 import type { FinanceSnapshot } from "../core/types";
 import {
@@ -7,8 +6,16 @@ import {
   type NetProfitPoint,
   type FinanceRangeInput,
 } from "../services/finance.service";
+import {
+  PANEL_CLASS,
+  MUTED_PANEL_CLASS,
+  INPUT_CLASS,
+} from "../theme/classes";
 
 type RangePreset = "TODAY" | "THIS_WEEK" | "THIS_MONTH" | "CUSTOM";
+
+const SMALL_INPUT_CLASS = `${INPUT_CLASS} px-2 py-1 text-xs`;
+const SUMMARY_CARD_CLASS = `${PANEL_CLASS} p-3`;
 
 function startOfToday() {
   const d = new Date();
@@ -102,7 +109,6 @@ export function FinancePage() {
       from = startOfMonth();
       to = endOfToday();
     } else {
-      // CUSTOM
       from = new Date(fromInput);
       from.setHours(0, 0, 0, 0);
       to = new Date(toInput);
@@ -170,17 +176,21 @@ export function FinancePage() {
   return (
     <div className="space-y-4">
       <div>
-        <h1 className="text-2xl font-semibold text-slate-50">Finance</h1>
-        <p className="text-sm text-slate-400">
+        <h1 className="text-2xl font-semibold text-slate-900">
+          Finance
+        </h1>
+        <p className="text-sm text-slate-600">
           Kita, gastos, at tubo per period. Based on orders, payments, and
           shipments from your live sessions.
         </p>
       </div>
 
       {/* Filters */}
-      <div className="grid gap-3 rounded-lg border border-slate-800 bg-slate-900/60 p-3 text-sm md:grid-cols-[minmax(0,1.5fr)_minmax(0,1fr)]">
+      <div
+        className={`${PANEL_CLASS} grid gap-3 p-3 text-sm md:grid-cols-[minmax(0,1.5fr)_minmax(0,1fr)]`}
+      >
         <div className="space-y-2">
-          <div className="text-xs font-semibold uppercase tracking-wide text-slate-400">
+          <div className="text-xs font-semibold uppercase tracking-wide text-slate-600">
             Period
           </div>
           <div className="flex flex-wrap gap-2">
@@ -193,10 +203,10 @@ export function FinancePage() {
                   key={value}
                   type="button"
                   onClick={() => handlePresetChange(value)}
-                  className={`rounded-md px-3 py-1 text-xs ${
+                  className={`rounded-md px-3 py-1 text-xs font-semibold transition ${
                     isActive
-                      ? "bg-emerald-500 text-white"
-                      : "bg-slate-900 text-slate-200 hover:bg-slate-800"
+                      ? "bg-emerald-500 text-slate-950 shadow-sm"
+                      : "bg-slate-100 text-slate-700 hover:bg-slate-200"
                   }`}
                 >
                   {rangeLabel(value)}
@@ -206,7 +216,9 @@ export function FinancePage() {
           </div>
           <div className="mt-2 grid grid-cols-2 gap-2">
             <div className="space-y-1">
-              <label className="text-xs font-medium text-slate-300">From</label>
+              <label className="text-xs font-medium text-slate-700">
+                From
+              </label>
               <input
                 type="date"
                 value={fromInput}
@@ -214,11 +226,13 @@ export function FinancePage() {
                   setFromInput(e.target.value);
                   setPreset("CUSTOM");
                 }}
-                className="w-full rounded-md border border-slate-700 bg-slate-950 px-2 py-1 text-xs text-slate-100 focus:border-emerald-500 focus:outline-none"
+                className={SMALL_INPUT_CLASS}
               />
             </div>
             <div className="space-y-1">
-              <label className="text-xs font-medium text-slate-300">To</label>
+              <label className="text-xs font-medium text-slate-700">
+                To
+              </label>
               <input
                 type="date"
                 value={toInput}
@@ -226,14 +240,14 @@ export function FinancePage() {
                   setToInput(e.target.value);
                   setPreset("CUSTOM");
                 }}
-                className="w-full rounded-md border border-slate-700 bg-slate-950 px-2 py-1 text-xs text-slate-100 focus:border-emerald-500 focus:outline-none"
+                className={SMALL_INPUT_CLASS}
               />
             </div>
           </div>
         </div>
 
         <div className="space-y-2">
-          <div className="text-xs font-semibold uppercase tracking-wide text-slate-400">
+          <div className="text-xs font-semibold uppercase tracking-wide text-slate-600">
             Platform
           </div>
           <select
@@ -241,7 +255,7 @@ export function FinancePage() {
             onChange={(e) =>
               setPlatform(e.target.value as FinanceRangeInput["platform"])
             }
-            className="w-full rounded-md border border-slate-700 bg-slate-950 px-2 py-1 text-sm text-slate-100 focus:border-emerald-500 focus:outline-none"
+            className={`${INPUT_CLASS} text-sm`}
           >
             <option value="ALL">All platforms</option>
             <option value="FACEBOOK">Facebook</option>
@@ -251,22 +265,26 @@ export function FinancePage() {
           </select>
 
           {snapshot && (
-            <p className="text-xs text-slate-500">
+            <p className="text-xs text-slate-600">
               Period:{" "}
-              <span className="font-medium text-slate-100">{periodLabel}</span>
+              <span className="font-medium text-slate-900">
+                {periodLabel}
+              </span>
             </p>
           )}
         </div>
       </div>
 
       {loading && (
-        <div className="rounded-md border border-slate-800 bg-slate-950/60 px-3 py-2 text-xs text-slate-400">
-          Loading finance data…
+        <div
+          className={`${MUTED_PANEL_CLASS} px-3 py-2 text-xs text-slate-600`}
+        >
+          Loading finance data...
         </div>
       )}
 
       {error && (
-        <div className="rounded-md border border-rose-500/70 bg-rose-950/40 px-3 py-2 text-xs text-rose-100">
+        <div className="rounded-md border border-rose-500/70 bg-rose-50 px-3 py-2 text-xs text-rose-700">
           {error}
         </div>
       )}
@@ -274,83 +292,83 @@ export function FinancePage() {
       {/* Summary cards */}
       {snapshot && (
         <div className="grid gap-3 md:grid-cols-3 lg:grid-cols-4">
-          <div className="rounded-lg border border-slate-800 bg-slate-950/70 p-3">
-            <div className="text-xs font-semibold uppercase tracking-wide text-slate-400">
-              Total Sales
+          <div className={SUMMARY_CARD_CLASS}>
+            <div className="flex items-center justify-between text-[11px] text-slate-500">
+              <span className="uppercase tracking-wide">Total Sales</span>
             </div>
-            <div className="mt-1 text-lg font-semibold text-emerald-300">
+            <div className="mt-1 text-lg font-semibold text-emerald-600">
               {formatCurrency(snapshot.totalSales)}
             </div>
           </div>
-          <div className="rounded-lg border border-slate-800 bg-slate-950/70 p-3">
-            <div className="text-xs font-semibold uppercase tracking-wide text-slate-400">
+          <div className={SUMMARY_CARD_CLASS}>
+            <div className="text-[11px] uppercase tracking-wide text-slate-500">
               Cost of Goods
             </div>
-            <div className="mt-1 text-lg font-semibold text-slate-100">
+            <div className="mt-1 text-lg font-semibold text-slate-900">
               {formatCurrency(snapshot.totalCostOfGoods)}
             </div>
           </div>
-          <div className="rounded-lg border border-slate-800 bg-slate-950/70 p-3">
-            <div className="text-xs font-semibold uppercase tracking-wide text-slate-400">
+          <div className={SUMMARY_CARD_CLASS}>
+            <div className="text-[11px] uppercase tracking-wide text-slate-500">
               Gross Profit
             </div>
-            <div className="mt-1 text-lg font-semibold text-slate-100">
+            <div className="mt-1 text-lg font-semibold text-slate-900">
               {formatCurrency(snapshot.grossProfit)}
             </div>
           </div>
-          <div className="rounded-lg border border-slate-800 bg-slate-950/70 p-3">
-            <div className="text-xs font-semibold uppercase tracking-wide text-slate-400">
+          <div className={SUMMARY_CARD_CLASS}>
+            <div className="text-[11px] uppercase tracking-wide text-slate-500">
               Net Profit
             </div>
-            <div className="mt-1 text-lg font-semibold text-emerald-300">
+            <div className="mt-1 text-lg font-semibold text-emerald-600">
               {formatCurrency(snapshot.netProfit)}
             </div>
-            <div className="text-xs text-slate-400">
+            <div className="text-xs text-slate-600">
               Margin:{" "}
-              <span className="font-medium text-slate-100">
+              <span className="font-medium text-slate-900">
                 {formatPercent(snapshot.profitMarginPercent)}
               </span>
             </div>
           </div>
 
-          <div className="rounded-lg border border-slate-800 bg-slate-950/70 p-3">
-            <div className="text-xs font-semibold uppercase tracking-wide text-slate-400">
+          <div className={SUMMARY_CARD_CLASS}>
+            <div className="text-[11px] uppercase tracking-wide text-slate-500">
               Shipping Cost
             </div>
-            <div className="mt-1 text-lg font-semibold text-slate-100">
+            <div className="mt-1 text-lg font-semibold text-slate-900">
               {formatCurrency(snapshot.totalShippingCost)}
             </div>
           </div>
-          <div className="rounded-lg border border-slate-800 bg-slate-950/70 p-3">
-            <div className="text-xs font-semibold uppercase tracking-wide text-slate-400">
+          <div className={SUMMARY_CARD_CLASS}>
+            <div className="text-[11px] uppercase tracking-wide text-slate-500">
               Other Expenses
             </div>
-            <div className="mt-1 text-lg font-semibold text-slate-100">
+            <div className="mt-1 text-lg font-semibold text-slate-900">
               {formatCurrency(snapshot.totalOtherExpenses)}
             </div>
           </div>
-          <div className="rounded-lg border border-slate-800 bg-slate-950/70 p-3">
-            <div className="text-xs font-semibold uppercase tracking-wide text-slate-400">
+          <div className={SUMMARY_CARD_CLASS}>
+            <div className="text-[11px] uppercase tracking-wide text-slate-500">
               Cash In
             </div>
-            <div className="mt-1 text-lg font-semibold text-emerald-300">
+            <div className="mt-1 text-lg font-semibold text-emerald-600">
               {formatCurrency(snapshot.cashIn)}
             </div>
           </div>
-          <div className="rounded-lg border border-slate-800 bg-slate-950/70 p-3">
-            <div className="text-xs font-semibold uppercase tracking-wide text-slate-400">
+          <div className={SUMMARY_CARD_CLASS}>
+            <div className="text-[11px] uppercase tracking-wide text-slate-500">
               Cash Out
             </div>
-            <div className="mt-1 text-lg font-semibold text-amber-300">
+            <div className="mt-1 text-lg font-semibold text-amber-600">
               {formatCurrency(snapshot.cashOut)}
             </div>
-            <div className="text-xs text-slate-400">
+            <div className="text-xs text-slate-600">
               Net change:{" "}
               <span
                 className={
                   snapshot.balanceChange >= 0
-                    ? "font-semibold text-emerald-300"
-                    : "font-semibold text-rose-300"
+                    ? "font-semibold text-emerald-600"
+                    : "font-semibold text-rose-600"
                 }
               >
                 {formatCurrency(snapshot.balanceChange)}
@@ -362,8 +380,8 @@ export function FinancePage() {
 
       {/* Net profit "graph" */}
       {hasData && series.length > 0 && (
-        <div className="rounded-lg border border-slate-800 bg-slate-950/70 p-3">
-          <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-400">
+        <div className={`${PANEL_CLASS} p-3`}>
+          <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-600">
             Net profit over time
           </div>
           <div className="flex items-end gap-2 overflow-x-auto pb-2">
@@ -385,7 +403,7 @@ export function FinancePage() {
                     }`}
                     style={{ height }}
                   />
-                  <div className="text-[10px] text-slate-400">
+                  <div className="text-[10px] text-slate-500">
                     {point.label.slice(5)}
                   </div>
                 </div>
@@ -399,18 +417,18 @@ export function FinancePage() {
       {snapshot && (
         <div className="grid gap-4 lg:grid-cols-2">
           {/* Per-session */}
-          <div className="rounded-lg border border-slate-800 bg-slate-950/70">
-            <div className="border-b border-slate-800 bg-slate-900/80 px-3 py-2 text-xs font-semibold uppercase tracking-wide text-slate-400">
+          <div className={PANEL_CLASS}>
+            <div className="border-b border-slate-200 bg-slate-50 px-3 py-2 text-xs font-semibold uppercase tracking-wide text-slate-600">
               Per live session performance
             </div>
             {snapshot.topSessions.length === 0 ? (
-              <div className="px-3 py-3 text-sm text-slate-500">
+              <div className="px-3 py-3 text-sm text-slate-600">
                 Walang sales pa in this period.
               </div>
             ) : (
               <div className="max-h-[260px] overflow-y-auto">
                 <table className="min-w-full text-left text-xs">
-                  <thead className="border-b border-slate-800 bg-slate-900/80 text-[11px] uppercase text-slate-400">
+                  <thead className="border-b border-slate-200 bg-slate-50 text-[11px] uppercase text-slate-600">
                     <tr>
                       <th className="px-3 py-2">Session</th>
                       <th className="px-3 py-2 text-right">Revenue</th>
@@ -421,15 +439,15 @@ export function FinancePage() {
                     {snapshot.topSessions.map((s) => (
                       <tr
                         key={s.liveSessionId}
-                        className="border-t border-slate-800"
+                        className="border-t border-slate-200"
                       >
-                        <td className="px-3 py-2 text-[11px] text-slate-100">
+                        <td className="px-3 py-2 text-[11px] text-slate-900">
                           {s.title}
                         </td>
-                        <td className="px-3 py-2 text-right text-[11px] text-slate-100">
+                        <td className="px-3 py-2 text-right text-[11px] text-slate-900">
                           {formatCurrency(s.revenue)}
                         </td>
-                        <td className="px-3 py-2 text-right text-[11px] text-emerald-300">
+                        <td className="px-3 py-2 text-right text-[11px] text-emerald-600">
                           {formatCurrency(s.profit)}
                         </td>
                       </tr>
@@ -441,18 +459,18 @@ export function FinancePage() {
           </div>
 
           {/* Per-product */}
-          <div className="rounded-lg border border-slate-800 bg-slate-950/70">
-            <div className="border-b border-slate-800 bg-slate-900/80 px-3 py-2 text-xs font-semibold uppercase tracking-wide text-slate-400">
+          <div className={PANEL_CLASS}>
+            <div className="border-b border-slate-200 bg-slate-50 px-3 py-2 text-xs font-semibold uppercase tracking-wide text-slate-600">
               Per product performance
             </div>
             {snapshot.topProducts.length === 0 ? (
-              <div className="px-3 py-3 text-sm text-slate-500">
+              <div className="px-3 py-3 text-sm text-slate-600">
                 Walang benta pa per item in this period.
               </div>
             ) : (
               <div className="max-h-[260px] overflow-y-auto">
                 <table className="min-w-full text-left text-xs">
-                  <thead className="border-b border-slate-800 bg-slate-900/80 text-[11px] uppercase text-slate-400">
+                  <thead className="border-b border-slate-200 bg-slate-50 text-[11px] uppercase text-slate-600">
                     <tr>
                       <th className="px-3 py-2">Item</th>
                       <th className="px-3 py-2 text-right">Qty</th>
@@ -464,21 +482,21 @@ export function FinancePage() {
                     {snapshot.topProducts.map((p) => (
                       <tr
                         key={p.itemCode + p.name}
-                        className="border-t border-slate-800"
+                        className="border-t border-slate-200"
                       >
-                        <td className="px-3 py-2 text-[11px] text-slate-100">
-                          <span className="font-mono text-[10px] text-slate-400">
+                        <td className="px-3 py-2 text-[11px] text-slate-900">
+                          <span className="font-mono text-[10px] text-slate-500">
                             {p.itemCode}
                           </span>{" "}
                           {p.name}
                         </td>
-                        <td className="px-3 py-2 text-right text-[11px] text-slate-100">
+                        <td className="px-3 py-2 text-right text-[11px] text-slate-900">
                           {p.qtySold}
                         </td>
-                        <td className="px-3 py-2 text-right text-[11px] text-slate-100">
+                        <td className="px-3 py-2 text-right text-[11px] text-slate-900">
                           {formatCurrency(p.revenue)}
                         </td>
-                        <td className="px-3 py-2 text-right text-[11px] text-emerald-300">
+                        <td className="px-3 py-2 text-right text-[11px] text-emerald-600">
                           {formatCurrency(p.profit)}
                         </td>
                       </tr>

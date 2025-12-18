@@ -17,6 +17,8 @@ export type CreateClaimInput = {
   liveSessionId: string;
   inventoryItemId: string;
   variantId?: string;
+  soldOnline?: boolean;
+  joyReserve?: boolean;
   customerId?: string;
   temporaryName: string;
   quantity: number;
@@ -34,13 +36,18 @@ export type ClaimStatusUpdate =
  * Helper: compute available stock (current - reserved, never below 0).
  */
 async function getAvailableStock(
-  inventoryItemId: string
+  inventoryItemId: string,
+  variantId?: string
 ): Promise<{ available: number; current: number; reserved: number }> {
   const item = await db.inventory.get(inventoryItemId);
   if (!item) {
     throw new Error("Inventory item not found");
   }
-  const available = Math.max(0, item.currentStock - item.reservedStock);
+  let available = Math.max(0, item.currentStock - item.reservedStock);
+  if (variantId && item.variants?.length) {
+    const variant = item.variants.find((v) => v.id === variantId);
+    if (variant) available = variant.stock;
+  }
   return {
     available,
     current: item.currentStock,
@@ -52,9 +59,9 @@ async function getAvailableStock(
  * Create a claim and apply stock-reservation logic:
  *
  *  - available = currentStock - reservedStock
- *  - If available >= quantity → ACCEPTED, reservedStock + quantity
- *  - Else if autoWaitlist → WAITLIST (no stock change)
- *  - Else → REJECTED (no stock change)
+ *  - If available >= quantity -> ACCEPTED, reservedStock + quantity
+ *  - Else if autoWaitlist -> WAITLIST (no stock change)
+ *  - Else -> REJECTED (no stock change)
  */
 export async function createClaim(input: CreateClaimInput): Promise<Claim> {
   if (!input.temporaryName.trim()) {
@@ -64,31 +71,33 @@ export async function createClaim(input: CreateClaimInput): Promise<Claim> {
     throw new Error("Quantity must be at least 1.");
   }
 
-  const settings = await ensureAppSettings();
-  const { available } = await getAvailableStock(input.inventoryItemId);
+  await ensureAppSettings();
+  const { available } = await getAvailableStock(
+    input.inventoryItemId,
+    input.variantId
+  );
 
   let status: Claim["status"];
   let reason: string | undefined = undefined;
 
-  if (available >= input.quantity) {
-    status = "ACCEPTED";
-    // reserve stock
-    await adjustStock(input.inventoryItemId, {
-      reservedDelta: input.quantity,
-    });
-  } else if (settings.autoWaitlist) {
-    status = "WAITLIST";
-    reason = "Auto-waitlist: not enough stock available.";
-  } else {
-    status = "REJECTED";
-    reason = "Not enough stock available.";
+  if (available < input.quantity) {
+    throw new Error("Not enough stock available for this item.");
   }
+
+  status = "ACCEPTED";
+  // reserve stock
+  await adjustStock(input.inventoryItemId, {
+    reservedDelta: input.quantity,
+    variantId: input.variantId,
+  });
 
   const claim: Claim = {
     id: generateId(),
     liveSessionId: input.liveSessionId,
     inventoryItemId: input.inventoryItemId,
     variantId: input.variantId,
+    soldOnline: input.soldOnline ?? false,
+    joyReserve: input.joyReserve ?? false,
     customerId: input.customerId,
     temporaryName: input.temporaryName.trim(),
     quantity: input.quantity,
@@ -128,7 +137,8 @@ export async function listClaimsForSession(
 export async function updateClaimStatus(
   claimId: string,
   newStatus: ClaimStatusUpdate,
-  reason?: string
+  reason?: string,
+  options?: { joyReserve?: boolean }
 ): Promise<Claim> {
   const existing = await db.claims.get(claimId);
   if (!existing) {
@@ -149,23 +159,41 @@ export async function updateClaimStatus(
       newStatus === "WAITLIST")
   ) {
     // Release reserved stock
-    await adjustStock(itemId, { reservedDelta: -existing.quantity });
+    await adjustStock(itemId, {
+      reservedDelta: -existing.quantity,
+      variantId: existing.variantId,
+    });
   } else if (existing.status === "WAITLIST" && newStatus === "ACCEPTED") {
-    const { available } = await getAvailableStock(itemId);
+    const { available } = await getAvailableStock(itemId, existing.variantId);
     if (available < existing.quantity) {
       throw new Error("Not enough stock to accept this waitlisted claim.");
     }
-    await adjustStock(itemId, { reservedDelta: existing.quantity });
+    await adjustStock(itemId, {
+      reservedDelta: existing.quantity,
+      variantId: existing.variantId,
+    });
   }
 
   const updated: Claim = {
     ...existing,
     status: newStatus,
     reason: reason ?? existing.reason,
+    joyReserve:
+      newStatus === "CANCELLED"
+        ? options?.joyReserve ?? false
+        : false,
   };
 
   await db.claims.put(updated);
   return updated;
+}
+
+/**
+ * Delete a claim permanently.
+ * Useful for hiding/culling cancelled/joy-reserve claims from the list.
+ */
+export async function deleteClaim(claimId: string): Promise<void> {
+  await db.claims.delete(claimId);
 }
 
 /**

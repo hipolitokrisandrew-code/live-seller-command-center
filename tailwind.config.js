@@ -1,15 +1,12 @@
 /** @type {import('tailwindcss').Config} */
 export default {
-  // ⬅ VERY IMPORTANT: tells Tailwind to use the `dark` class, not OS preference
+  // Use class-based dark mode (apply "dark" on an ancestor, e.g., html/body)
   darkMode: "class",
 
-  // Tell Tailwind where to look for class names
   content: ["./index.html", "./src/**/*.{js,ts,jsx,tsx}"],
 
   theme: {
-    extend: {
-      // You can extend colors, spacing, etc. here later if needed
-    },
+    extend: {},
   },
 
   plugins: [],

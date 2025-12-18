@@ -1,4 +1,3 @@
-// src/pages/ShippingPage.tsx
 import type { FormEvent } from "react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { LiveSession, Order, Shipment } from "../core/types";
@@ -12,6 +11,11 @@ import {
   getShipmentForOrder,
   updateShipmentStatus,
 } from "../services/shipments.service";
+import { listCustomerBasics } from "../services/customers.service";
+import { PANEL_CLASS, MUTED_PANEL_CLASS, INPUT_CLASS } from "../theme/classes";
+
+const TABLE_HEAD_CLASS =
+  "border-b border-slate-200 bg-slate-50 text-xs uppercase text-slate-600";
 
 function formatCurrency(value: number | undefined | null): string {
   const num = Number.isFinite(value as number) ? (value as number) : 0;
@@ -22,9 +26,9 @@ function formatCurrency(value: number | undefined | null): string {
 }
 
 function formatDateTime(iso?: string) {
-  if (!iso) return "—";
+  if (!iso) return "-";
   const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return "—";
+  if (Number.isNaN(d.getTime())) return "-";
   return d.toLocaleString("en-PH", {
     dateStyle: "medium",
     timeStyle: "short",
@@ -34,6 +38,32 @@ function formatDateTime(iso?: string) {
 
 function todayDateInput() {
   return new Date().toISOString().slice(0, 10);
+}
+
+function formatCustomerName(
+  id?: string | null,
+  displayName?: string | null,
+  realName?: string | null
+): string {
+  if (displayName && displayName.trim()) return displayName.trim();
+  if (realName && realName.trim()) return realName.trim();
+  if (!id) return "Customer";
+  const clean = id.trim();
+  if (clean.length <= 10) return clean;
+  return `${clean.slice(0, 6)}…${clean.slice(-4)}`;
+}
+
+function formatCustomerLabel(
+  id?: string | null,
+  displayName?: string | null,
+  realName?: string | null
+): string {
+  if (displayName && displayName.trim()) return displayName.trim();
+  if (realName && realName.trim()) return realName.trim();
+  if (!id) return "Customer";
+  const clean = id.trim();
+  if (clean.length <= 10) return clean;
+  return `${clean.slice(0, 6)}…${clean.slice(-4)}`;
 }
 
 export function ShippingPage() {
@@ -46,6 +76,9 @@ export function ShippingPage() {
   const [activeOrderId, setActiveOrderId] = useState<string | undefined>(
     undefined
   );
+  const [customerMap, setCustomerMap] = useState<
+    Record<string, { displayName?: string; realName?: string }>
+  >({});
 
   const [shipment, setShipment] = useState<Shipment | null>(null);
   const [orderTotals, setOrderTotals] = useState<{
@@ -79,17 +112,25 @@ export function ShippingPage() {
     [sessions, activeSessionId]
   );
 
-  // Initial load: sessions
   useEffect(() => {
     void (async () => {
       try {
         setLoadingSessions(true);
-        const list = await listLiveSessions();
-        setSessions(list);
+        const [sessionList, basics] = await Promise.all([
+          listLiveSessions(),
+          listCustomerBasics(),
+        ]);
+        setSessions(sessionList);
+        const map: Record<string, { displayName?: string; realName?: string }> =
+          {};
+        basics.forEach((c) => {
+          map[c.id] = { displayName: c.displayName, realName: c.realName };
+        });
+        setCustomerMap(map);
 
-        if (list.length > 0) {
-          const live = list.find((s) => s.status === "LIVE");
-          const firstId = (live ?? list[0]).id;
+        if (sessionList.length > 0) {
+          const live = sessionList.find((s) => s.status === "LIVE");
+          const firstId = (live ?? sessionList[0]).id;
           setActiveSessionId(firstId);
         }
       } catch (e: unknown) {
@@ -107,7 +148,6 @@ export function ShippingPage() {
       setError(null);
       const list = await listOrdersForSession(sessionId);
 
-      // Focus on orders that are not cancelled/returned
       const filtered = list.filter(
         (o) => o.status !== "CANCELLED" && o.status !== "RETURNED"
       );
@@ -129,7 +169,6 @@ export function ShippingPage() {
     }
   }, []);
 
-  // When session changes → reload orders
   useEffect(() => {
     if (!activeSessionId) {
       setOrders([]);
@@ -196,8 +235,6 @@ export function ShippingPage() {
         } else {
           setShipment(null);
           fillFormFromShipment(null);
-
-          // default shipping booking date = today
           setFormBookingDate(todayDateInput());
         }
       } catch (e: unknown) {
@@ -210,7 +247,6 @@ export function ShippingPage() {
     [fillFormFromShipment]
   );
 
-  // When active order changes → load shipment
   useEffect(() => {
     if (!activeOrderId) {
       setShipment(null);
@@ -263,7 +299,6 @@ export function ShippingPage() {
       setShipment(updatedShipment);
       fillFormFromShipment(updatedShipment);
 
-      // Refresh totals + orders list so status changes are visible
       await refreshShipmentForOrder(activeOrderId);
       if (activeSessionId) {
         await refreshOrdersForSession(activeSessionId);
@@ -305,7 +340,6 @@ export function ShippingPage() {
         fillFormFromShipment(updatedShipment);
       }
 
-      // Refresh totals + orders list
       if (activeOrderId) {
         await refreshShipmentForOrder(activeOrderId);
       }
@@ -325,8 +359,10 @@ export function ShippingPage() {
   return (
     <div className="space-y-4">
       <div>
-        <h1 className="text-2xl font-semibold text-slate-50">Shipping</h1>
-        <p className="text-sm text-slate-400">
+        <h1 className="text-2xl font-semibold text-slate-900">
+          Shipping
+        </h1>
+        <p className="text-sm text-slate-600">
           Manage shipping queue: courier, tracking number, shipping fee, and
           delivery status. Orders auto-update to PACKING, SHIPPED, or DELIVERED
           based on shipment status and payment.
@@ -334,9 +370,11 @@ export function ShippingPage() {
       </div>
 
       {/* Filter bar */}
-      <div className="grid gap-3 rounded-lg border border-slate-800 bg-slate-900/60 p-3 text-sm md:grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)]">
+      <div
+        className={`${PANEL_CLASS} grid gap-3 p-3 text-sm lg:grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)]`}
+      >
         <div className="flex flex-col gap-2">
-          <label className="text-xs font-semibold uppercase tracking-wide text-slate-400">
+          <label className="text-xs font-semibold uppercase tracking-wide text-slate-600">
             Live session
           </label>
           <select
@@ -344,11 +382,11 @@ export function ShippingPage() {
             onChange={(e) =>
               setActiveSessionId(e.target.value ? e.target.value : undefined)
             }
-            className="rounded-md border border-slate-700 bg-slate-950 px-2 py-1 text-sm text-slate-100 focus:border-emerald-500 focus:outline-none"
+            className={INPUT_CLASS}
           >
             {sessions.length === 0 && <option value="">No sessions yet</option>}
             {sessions.length > 0 && activeSessionId == null && (
-              <option value="">Select session…</option>
+              <option value="">Select session...</option>
             )}
             {sessions.map((s) => (
               <option key={s.id} value={s.id}>
@@ -357,9 +395,9 @@ export function ShippingPage() {
             ))}
           </select>
           {activeSession && (
-            <p className="text-xs text-slate-500">
+            <p className="text-xs text-slate-600">
               Status:{" "}
-              <span className="font-medium text-slate-200">
+              <span className="font-medium text-slate-900">
                 {activeSession.status}
               </span>
             </p>
@@ -367,7 +405,7 @@ export function ShippingPage() {
         </div>
 
         <div className="flex flex-col gap-2">
-          <label className="text-xs font-semibold uppercase tracking-wide text-slate-400">
+          <label className="text-xs font-semibold uppercase tracking-wide text-slate-600">
             Order in queue
           </label>
           <select
@@ -375,32 +413,38 @@ export function ShippingPage() {
             onChange={(e) =>
               setActiveOrderId(e.target.value ? e.target.value : undefined)
             }
-            className="rounded-md border border-slate-700 bg-slate-950 px-2 py-1 text-sm text-slate-100 focus:border-emerald-500 focus:outline-none"
+            className={INPUT_CLASS}
           >
             {!activeSessionId && (
-              <option value="">Select a session first…</option>
+              <option value="">Select a session first...</option>
             )}
             {activeSessionId && orders.length === 0 && (
               <option value="">No orders yet for this session</option>
             )}
             {orders.map((o) => (
               <option key={o.id} value={o.id}>
-                {o.orderNumber} – {o.customerId} ({o.status})
+                {o.orderNumber} -{" "}
+                {formatCustomerName(
+                  o.customerId,
+                  customerMap[o.customerId ?? ""]?.displayName,
+                  customerMap[o.customerId ?? ""]?.realName
+                )}{" "}
+                ({o.status})
               </option>
             ))}
           </select>
           {orderTotals && (
-            <p className="text-xs text-slate-500">
+            <p className="text-xs text-slate-600">
               Order:{" "}
-              <span className="font-medium text-slate-200">
+              <span className="font-medium text-slate-900">
                 {orderTotals.status}
               </span>{" "}
-              · Payment:{" "}
-              <span className="font-medium text-slate-200">
+              | Payment:{" "}
+              <span className="font-medium text-slate-900">
                 {orderTotals.paymentStatus}
               </span>{" "}
-              · Balance:{" "}
-              <span className="font-medium text-amber-300">
+              | Balance:{" "}
+              <span className="font-medium text-amber-700">
                 {formatCurrency(orderTotals.balanceDue)}
               </span>
             </p>
@@ -409,36 +453,36 @@ export function ShippingPage() {
       </div>
 
       {infoMessage && (
-        <div className="rounded-md border border-emerald-500/60 bg-emerald-950/40 px-3 py-2 text-xs text-emerald-100">
+        <div className="rounded-md border border-emerald-500/60 bg-emerald-50 px-3 py-2 text-xs text-emerald-700">
           {infoMessage}
         </div>
       )}
       {error && (
-        <div className="rounded-md border border-rose-500/70 bg-rose-950/40 px-3 py-2 text-xs text-rose-100">
+        <div className="rounded-md border border-rose-500/70 bg-rose-50 px-3 py-2 text-xs text-rose-700">
           {error}
         </div>
       )}
 
       {/* Main layout: queue + shipment form */}
-      <div className="grid gap-4 md:grid-cols-[minmax(0,1.3fr)_minmax(0,1fr)]">
+      <div className="grid gap-4 lg:grid-cols-[minmax(0,1.3fr)_minmax(0,1fr)]">
         {/* Left: queue table */}
-        <div className="rounded-lg border border-slate-800 bg-slate-950/60">
-          <div className="border-b border-slate-800 bg-slate-900/80 px-3 py-2 text-xs font-semibold uppercase tracking-wide text-slate-400">
+        <div className={PANEL_CLASS}>
+          <div className="border-b border-slate-200 bg-slate-50 px-3 py-2 text-xs font-semibold uppercase tracking-wide text-slate-600">
             Shipping queue for this session
           </div>
           <div className="max-h-[420px] overflow-y-auto">
             {loadingOrders ? (
-              <div className="px-3 py-4 text-sm text-slate-400">
-                Loading orders…
+              <div className="px-3 py-4 text-sm text-slate-600">
+                Loading orders...
               </div>
             ) : orders.length === 0 ? (
-              <div className="px-3 py-4 text-sm text-slate-500">
+              <div className="px-3 py-4 text-sm text-slate-600">
                 Walang orders pa for this session (or all are cancelled /
                 returned).
               </div>
             ) : (
               <table className="min-w-full text-left text-xs">
-                <thead className="border-b border-slate-800 bg-slate-900/80 text-[11px] uppercase text-slate-400">
+                <thead className={TABLE_HEAD_CLASS}>
                   <tr>
                     <th className="px-3 py-2">Order #</th>
                     <th className="px-3 py-2">Customer</th>
@@ -454,27 +498,33 @@ export function ShippingPage() {
                     return (
                       <tr
                         key={o.id}
-                        className={`border-t border-slate-800 hover:bg-slate-900/70 ${
-                          isActive ? "bg-slate-900/80" : ""
+                        className={`border-t border-slate-200 hover:bg-slate-50 ${
+                          isActive
+                            ? "bg-slate-100"
+                            : "bg-transparent"
                         }`}
                         onClick={() => setActiveOrderId(o.id)}
                       >
-                        <td className="cursor-pointer px-3 py-2 text-[11px] text-emerald-300">
+                        <td className="cursor-pointer px-3 py-2 text-[11px] font-semibold text-emerald-700">
                           {o.orderNumber}
                         </td>
-                        <td className="cursor-pointer px-3 py-2 text-[11px] text-slate-100">
-                          {o.customerId}
+                        <td className="cursor-pointer px-3 py-2 text-[11px] text-slate-900">
+                          {formatCustomerName(
+                            o.customerId,
+                            customerMap[o.customerId ?? ""]?.displayName,
+                            customerMap[o.customerId ?? ""]?.realName
+                          )}
                         </td>
-                        <td className="cursor-pointer px-3 py-2 text-right text-[11px] text-slate-100">
+                        <td className="cursor-pointer px-3 py-2 text-right text-[11px] text-slate-900">
                           {formatCurrency(o.grandTotal)}
                         </td>
-                        <td className="cursor-pointer px-3 py-2 text-right text-[11px] text-slate-100">
+                        <td className="cursor-pointer px-3 py-2 text-right text-[11px] text-slate-900">
                           {formatCurrency(o.amountPaid)}
                         </td>
-                        <td className="cursor-pointer px-3 py-2 text-[11px] text-slate-100">
+                        <td className="cursor-pointer px-3 py-2 text-[11px] text-slate-900">
                           {o.paymentStatus}
                         </td>
-                        <td className="cursor-pointer px-3 py-2 text-[11px] text-slate-100">
+                        <td className="cursor-pointer px-3 py-2 text-[11px] text-slate-900">
                           {o.status}
                         </td>
                       </tr>
@@ -487,43 +537,53 @@ export function ShippingPage() {
         </div>
 
         {/* Right: shipment form */}
-        <div className="rounded-lg border border-slate-800 bg-slate-950/60">
-          <div className="border-b border-slate-800 bg-slate-900/80 px-3 py-2 text-xs font-semibold uppercase tracking-wide text-slate-400">
+        <div className={PANEL_CLASS}>
+          <div className="border-b border-slate-200 bg-slate-50 px-3 py-2 text-xs font-semibold uppercase tracking-wide text-slate-600">
             Shipment details
           </div>
 
           <form onSubmit={handleSaveShipment} className="space-y-3 p-3 text-sm">
             {!activeOrderId ? (
-              <p className="text-sm text-slate-500">
+              <p className="text-sm text-slate-600">
                 Select an order from the queue to create or edit its shipment.
               </p>
             ) : loadingShipment ? (
-              <p className="text-sm text-slate-400">Loading shipment info…</p>
+              <p className="text-sm text-slate-600">
+                Loading shipment info...
+              </p>
             ) : (
               <>
                 {orderTotals && (
                   <div className="mb-2 grid grid-cols-2 gap-2 text-xs">
-                    <div className="rounded-md border border-slate-800 bg-slate-900/70 p-2">
-                      <div className="text-slate-400">Grand total</div>
-                      <div className="font-semibold text-emerald-300">
+                    <div
+                      className={`${MUTED_PANEL_CLASS} border border-slate-200 bg-slate-50 p-2`}
+                    >
+                      <div className="text-slate-600">Grand total</div>
+                      <div className="font-semibold text-emerald-700">
                         {formatCurrency(orderTotals.grandTotal)}
                       </div>
                     </div>
-                    <div className="rounded-md border border-slate-800 bg-slate-900/70 p-2">
-                      <div className="text-slate-400">Balance</div>
-                      <div className="font-semibold text-amber-300">
+                    <div
+                      className={`${MUTED_PANEL_CLASS} border border-slate-200 bg-slate-50 p-2`}
+                    >
+                      <div className="text-slate-600">Balance</div>
+                      <div className="font-semibold text-amber-700">
                         {formatCurrency(orderTotals.balanceDue)}
                       </div>
                     </div>
-                    <div className="rounded-md border border-slate-800 bg-slate-900/70 p-2">
-                      <div className="text-slate-400">Payment status</div>
-                      <div className="font-semibold text-slate-100">
+                    <div
+                      className={`${MUTED_PANEL_CLASS} border border-slate-200 bg-slate-50 p-2`}
+                    >
+                      <div className="text-slate-600">Payment status</div>
+                      <div className="font-semibold text-slate-900">
                         {orderTotals.paymentStatus}
                       </div>
                     </div>
-                    <div className="rounded-md border border-slate-800 bg-slate-900/70 p-2">
-                      <div className="text-slate-400">Order status</div>
-                      <div className="font-semibold text-slate-100">
+                    <div
+                      className={`${MUTED_PANEL_CLASS} border border-slate-200 bg-slate-50 p-2`}
+                    >
+                      <div className="text-slate-600">Order status</div>
+                      <div className="font-semibold text-slate-900">
                         {orderTotals.status}
                       </div>
                     </div>
@@ -531,33 +591,33 @@ export function ShippingPage() {
                 )}
 
                 <div className="space-y-1">
-                  <label className="text-xs font-medium text-slate-300">
-                    Courier <span className="text-rose-400">*</span>
+                  <label className="text-xs font-medium text-slate-700">
+                    Courier <span className="text-rose-500">*</span>
                   </label>
                   <input
                     type="text"
                     value={formCourier}
                     onChange={(e) => setFormCourier(e.target.value)}
-                    className="w-full rounded-md border border-slate-700 bg-slate-950 px-2 py-1 text-sm text-slate-100 focus:border-emerald-500 focus:outline-none"
+                    className={INPUT_CLASS}
                     placeholder="J&T, JRS, LBC, etc."
                   />
                 </div>
 
                 <div className="space-y-1">
-                  <label className="text-xs font-medium text-slate-300">
+                  <label className="text-xs font-medium text-slate-700">
                     Tracking number
                   </label>
                   <input
                     type="text"
                     value={formTracking}
                     onChange={(e) => setFormTracking(e.target.value)}
-                    className="w-full rounded-md border border-slate-700 bg-slate-950 px-2 py-1 text-sm text-slate-100 focus:border-emerald-500 focus:outline-none"
+                    className={INPUT_CLASS}
                     placeholder="Tracking number from courier"
                   />
                 </div>
 
                 <div className="space-y-1">
-                  <label className="text-xs font-medium text-slate-300">
+                  <label className="text-xs font-medium text-slate-700">
                     Shipping fee
                   </label>
                   <input
@@ -567,13 +627,13 @@ export function ShippingPage() {
                     inputMode="decimal"
                     value={formShippingFee}
                     onChange={(e) => setFormShippingFee(e.target.value)}
-                    className="w-full rounded-md border border-slate-700 bg-slate-950 px-2 py-1 text-sm text-slate-100 focus:border-emerald-500 focus:outline-none"
+                    className={INPUT_CLASS}
                     placeholder="0.00"
                   />
                 </div>
 
                 <div className="space-y-1">
-                  <label className="text-xs font-medium text-slate-300">
+                  <label className="text-xs font-medium text-slate-700">
                     Status
                   </label>
                   <select
@@ -581,7 +641,7 @@ export function ShippingPage() {
                     onChange={(e) =>
                       setFormStatus(e.target.value as Shipment["status"])
                     }
-                    className="w-full rounded-md border border-slate-700 bg-slate-950 px-2 py-1 text-sm text-slate-100 focus:border-emerald-500 focus:outline-none"
+                    className={INPUT_CLASS}
                   >
                     <option value="PENDING">Pending</option>
                     <option value="BOOKED">Booked / To pick up</option>
@@ -594,49 +654,49 @@ export function ShippingPage() {
 
                 <div className="grid grid-cols-3 gap-2">
                   <div className="space-y-1">
-                    <label className="text-xs font-medium text-slate-300">
+                    <label className="text-xs font-medium text-slate-700">
                       Booking date
                     </label>
                     <input
                       type="date"
                       value={formBookingDate}
                       onChange={(e) => setFormBookingDate(e.target.value)}
-                      className="w-full rounded-md border border-slate-700 bg-slate-950 px-2 py-1 text-xs text-slate-100 focus:border-emerald-500 focus:outline-none"
+                      className={`${INPUT_CLASS} text-xs`}
                     />
                   </div>
                   <div className="space-y-1">
-                    <label className="text-xs font-medium text-slate-300">
+                    <label className="text-xs font-medium text-slate-700">
                       Ship date
                     </label>
                     <input
                       type="date"
                       value={formShipDate}
                       onChange={(e) => setFormShipDate(e.target.value)}
-                      className="w-full rounded-md border border-slate-700 bg-slate-950 px-2 py-1 text-xs text-slate-100 focus:border-emerald-500 focus:outline-none"
+                      className={`${INPUT_CLASS} text-xs`}
                     />
                   </div>
                   <div className="space-y-1">
-                    <label className="text-xs font-medium text-slate-300">
+                    <label className="text-xs font-medium text-slate-700">
                       Delivery date
                     </label>
                     <input
                       type="date"
                       value={formDeliveryDate}
                       onChange={(e) => setFormDeliveryDate(e.target.value)}
-                      className="w-full rounded-md border border-slate-700 bg-slate-950 px-2 py-1 text-xs text-slate-100 focus:border-emerald-500 focus:outline-none"
+                      className={`${INPUT_CLASS} text-xs`}
                     />
                   </div>
                 </div>
 
                 <div className="space-y-1">
-                  <label className="text-xs font-medium text-slate-300">
+                  <label className="text-xs font-medium text-slate-700">
                     Notes
                   </label>
                   <textarea
                     value={formNotes}
                     onChange={(e) => setFormNotes(e.target.value)}
                     rows={3}
-                    className="w-full rounded-md border border-slate-700 bg-slate-950 px-2 py-1 text-sm text-slate-100 focus:border-emerald-500 focus:outline-none"
+                    className={`${INPUT_CLASS} min-h-[90px]`}
                     placeholder="Optional notes (ex: rider, special instructions, RTD reason, etc.)"
                   />
                 </div>
@@ -644,20 +704,22 @@ export function ShippingPage() {
                 <button
                   type="submit"
                   disabled={savingShipment}
-                  className="w-full rounded-md bg-emerald-500 px-3 py-1.5 text-sm font-medium text-black shadow-sm hover:bg-emerald-600 disabled:cursor-not-allowed disabled:bg-slate-700"
+                  className="w-full rounded-md bg-emerald-500 px-3 py-1.5 text-sm font-medium text-slate-950 shadow-sm hover:bg-emerald-600 disabled:cursor-not-allowed disabled:bg-slate-300 disabled:text-slate-500"
                 >
-                  {savingShipment ? "Saving shipment…" : "Save shipment"}
+                  {savingShipment ? "Saving shipment..." : "Save shipment"}
                 </button>
 
                 {shipment && (
-                  <div className="mt-2 space-y-1 border-t border-slate-800 pt-2 text-xs">
-                    <div className="text-slate-400">Quick status:</div>
+                  <div className="mt-2 space-y-1 border-t border-slate-200 pt-2 text-xs">
+                    <div className="text-slate-600">
+                      Quick status:
+                    </div>
                     <div className="flex flex-wrap gap-2">
                       <button
                         type="button"
                         disabled={updatingStatus}
                         onClick={() => void handleQuickStatusChange("BOOKED")}
-                        className="rounded border border-slate-600 px-2 py-0.5 text-[11px] text-slate-100 hover:bg-slate-800 disabled:cursor-not-allowed disabled:text-slate-500"
+                        className="rounded border border-slate-300 px-2 py-0.5 text-[11px] text-slate-800 hover:bg-slate-100 disabled:cursor-not-allowed disabled:text-slate-400"
                       >
                         Mark as booked
                       </button>
@@ -667,7 +729,7 @@ export function ShippingPage() {
                         onClick={() =>
                           void handleQuickStatusChange("IN_TRANSIT")
                         }
-                        className="rounded border border-slate-600 px-2 py-0.5 text-[11px] text-slate-100 hover:bg-slate-800 disabled:cursor-not-allowed disabled:text-slate-500"
+                        className="rounded border border-slate-300 px-2 py-0.5 text-[11px] text-slate-800 hover:bg-slate-100 disabled:cursor-not-allowed disabled:text-slate-400"
                       >
                         Mark as in transit
                       </button>
@@ -677,19 +739,19 @@ export function ShippingPage() {
                         onClick={() =>
                           void handleQuickStatusChange("DELIVERED")
                         }
-                        className="rounded border border-emerald-500/70 px-2 py-0.5 text-[11px] text-emerald-200 hover:bg-emerald-900/60 disabled:cursor-not-allowed disabled:text-slate-500"
+                        className="rounded border border-emerald-500/70 px-2 py-0.5 text-[11px] text-emerald-700 hover:bg-emerald-50 disabled:cursor-not-allowed disabled:text-slate-400"
                       >
                         Mark as delivered
                       </button>
                     </div>
                     {shipment && (
-                      <p className="text-xs text-slate-500">
+                      <p className="text-xs text-slate-600">
                         Current status:{" "}
-                        <span className="font-medium text-slate-100">
+                        <span className="font-medium text-slate-900">
                           {shipment.status}
                         </span>{" "}
-                        · Last updated:{" "}
-                        <span className="font-medium text-slate-100">
+                        | Last updated:{" "}
+                        <span className="font-medium text-slate-900">
                           {formatDateTime(
                             shipment.deliveryDate ?? shipment.shipDate
                           )}
@@ -705,13 +767,17 @@ export function ShippingPage() {
       </div>
 
       {loadingSessions && (
-        <div className="rounded-md border border-slate-800 bg-slate-950/60 px-3 py-2 text-xs text-slate-400">
-          Loading sessions…
+        <div
+          className={`${MUTED_PANEL_CLASS} px-3 py-2 text-xs text-slate-600`}
+        >
+          Loading sessions...
         </div>
       )}
       {loadingOrders && !loadingSessions && (
-        <div className="rounded-md border border-slate-800 bg-slate-950/60 px-3 py-2 text-xs text-slate-400">
-          Loading orders…
+        <div
+          className={`${MUTED_PANEL_CLASS} px-3 py-2 text-xs text-slate-600`}
+        >
+          Loading orders...
         </div>
       )}
     </div>

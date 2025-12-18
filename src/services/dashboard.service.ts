@@ -15,6 +15,7 @@ import type {
   LiveSession,
   Order,
   OrderLine,
+  Customer,
 } from "../core/types";
 
 export type DashboardLowStockItem = {
@@ -36,21 +37,41 @@ export type DashboardSessionTile = {
   profit: number;
 };
 
-export type DashboardSummary = {
-  todayLabel: string;
+export type DashboardOrderLite = {
+  id: string;
+  orderNumber: string;
+  customerName: string;
+  balanceDue: number;
+  paymentStatus: Order["paymentStatus"];
+  status: Order["status"];
+  itemsSummary: string;
+  grandTotal: number;
+  amountPaid: number;
+  liveSessionTitle?: string;
+};
 
-  todaySales: number;
-  todayOrdersCount: number;
+export type DashboardSummary = {
+  dateRangeLabel: string;
+
+  rangeSales: number;
+  rangeOrdersCount: number;
 
   pendingPaymentsCount: number;
   pendingPaymentsAmount: number;
+  pendingOrders: DashboardOrderLite[];
 
   toShipCount: number;
+  toShipOrders: DashboardOrderLite[];
 
   lowStockCount: number;
   lowStockItems: DashboardLowStockItem[];
 
   recentSessions: DashboardSessionTile[];
+};
+
+export type DashboardSummaryInput = {
+  from?: string; // YYYY-MM-DD
+  to?: string; // YYYY-MM-DD
 };
 
 function startOfTodayISO(): string {
@@ -70,37 +91,74 @@ function safeNumber(value: unknown): number {
   return Number.isFinite(n) ? n : 0;
 }
 
+function startOfDayIso(dateStr: string): string {
+  const d = new Date(dateStr);
+  d.setHours(0, 0, 0, 0);
+  return d.toISOString();
+}
+
+function endOfDayIso(dateStr: string): string {
+  const d = new Date(dateStr);
+  d.setHours(23, 59, 59, 999);
+  return d.toISOString();
+}
+
+function formatRangeLabel(fromIso: string, toIso: string): string {
+  const opts: Intl.DateTimeFormatOptions = {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+  };
+  const from = new Date(fromIso);
+  const to = new Date(toIso);
+  const fromLabel = from.toLocaleDateString("en-PH", opts);
+  const toLabel = to.toLocaleDateString("en-PH", opts);
+  return fromLabel === toLabel ? fromLabel : `${fromLabel} - ${toLabel}`;
+}
+
+function summarizeOrderLines(lines: OrderLine[]): string {
+  if (!lines.length) return "No items";
+  return lines
+    .map((l) => `${safeNumber(l.quantity)}x ${l.nameSnapshot}`)
+    .join(", ");
+}
+
 /**
  * Main entry point for the dashboard.
  */
-export async function getDashboardSummary(): Promise<DashboardSummary> {
-  const [orders, inventory, sessions, orderLines] = await Promise.all([
+export async function getDashboardSummary(
+  params?: DashboardSummaryInput
+): Promise<DashboardSummary> {
+  const [orders, inventory, sessions, orderLines, customers] = await Promise.all([
     db.orders.toArray(),
     db.inventory.toArray(),
     db.liveSessions.toArray(),
     db.orderLines.toArray(),
+    db.customers.toArray(),
   ]);
-
-  const todayStart = startOfTodayISO();
-  const todayEnd = endOfTodayISO();
   const now = new Date();
 
-  // 1) Today’s sales & orders (paid only)
+  const rangeFromIso = params?.from
+    ? startOfDayIso(params.from)
+    : startOfTodayISO();
+  const rangeToIso = params?.to ? endOfDayIso(params.to) : endOfTodayISO();
+
+  // 1) Sales & orders in range (paid only)
   const isToday = (order: Order): boolean => {
     if (!order.createdAt) return false;
-    return order.createdAt >= todayStart && order.createdAt <= todayEnd;
+    return order.createdAt >= rangeFromIso && order.createdAt <= rangeToIso;
   };
 
-  const todayPaidOrders = orders.filter(
+  const rangePaidOrders = orders.filter(
     (o) => isToday(o) && o.paymentStatus === "PAID"
   );
 
-  const todaySales = todayPaidOrders.reduce(
+  const rangeSales = rangePaidOrders.reduce(
     (sum, o) => sum + safeNumber(o.grandTotal),
     0
   );
 
-  const todayOrdersCount = todayPaidOrders.length;
+  const rangeOrdersCount = rangePaidOrders.length;
 
   // 2) Pending payments
   const pendingOrders = orders.filter(
@@ -154,10 +212,7 @@ export async function getDashboardSummary(): Promise<DashboardSummary> {
 
   const lowStockCount = lowStockAll.length;
 
-  // 5) Recent live sessions – revenue & profit
-  const inventoryById = new Map<string, InventoryItem>();
-  inventory.forEach((i) => inventoryById.set(i.id, i));
-
+  // 5) Recent live sessions - revenue & profit
   const linesByOrderId = new Map<string, OrderLine[]>();
   orderLines.forEach((line) => {
     const existing = linesByOrderId.get(line.orderId);
@@ -167,6 +222,44 @@ export async function getDashboardSummary(): Promise<DashboardSummary> {
       linesByOrderId.set(line.orderId, [line]);
     }
   });
+
+  const customersById = new Map<string, Customer>();
+  customers.forEach((c) => customersById.set(c.id, c));
+
+  const sessionsById = new Map<string, LiveSession>();
+  sessions.forEach((s) => sessionsById.set(s.id, s));
+
+  const inventoryById = new Map<string, InventoryItem>();
+  inventory.forEach((i) => inventoryById.set(i.id, i));
+
+  const mapOrderLite = (o: Order): DashboardOrderLite => {
+    const balance =
+      typeof o.balanceDue === "number"
+        ? safeNumber(o.balanceDue)
+        : Math.max(safeNumber(o.grandTotal) - safeNumber(o.amountPaid), 0);
+    const lines = linesByOrderId.get(o.id) ?? [];
+    const customerName =
+      customersById.get(o.customerId)?.displayName ?? o.customerId ?? "Customer";
+    const liveSessionTitle = o.liveSessionId
+      ? sessionsById.get(o.liveSessionId)?.title
+      : undefined;
+
+    return {
+      id: o.id,
+      orderNumber: o.orderNumber,
+      customerName,
+      balanceDue: balance,
+      paymentStatus: o.paymentStatus,
+      status: o.status,
+      itemsSummary: summarizeOrderLines(lines),
+      grandTotal: safeNumber(o.grandTotal),
+      amountPaid: safeNumber(o.amountPaid),
+      liveSessionTitle,
+    };
+  };
+
+  const pendingOrderTiles = pendingOrders.map(mapOrderLite);
+  const toShipOrderTiles = toShipOrders.map(mapOrderLite);
 
   const sessionAgg = new Map<string, { revenue: number; cost: number }>();
 
@@ -217,20 +310,17 @@ export async function getDashboardSummary(): Promise<DashboardSummary> {
       };
     });
 
-  const todayLabel = now.toLocaleDateString("en-PH", {
-    weekday: "short",
-    month: "short",
-    day: "numeric",
-    year: "numeric",
-  });
+  const dateRangeLabel = formatRangeLabel(rangeFromIso, rangeToIso);
 
   return {
-    todayLabel,
-    todaySales,
-    todayOrdersCount,
+    dateRangeLabel,
+    rangeSales,
+    rangeOrdersCount,
     pendingPaymentsCount,
     pendingPaymentsAmount,
+    pendingOrders: pendingOrderTiles,
     toShipCount,
+    toShipOrders: toShipOrderTiles,
     lowStockCount,
     lowStockItems,
     recentSessions,

@@ -31,8 +31,9 @@ function generateId(): string {
  * Returns OK / LOW / OUT based on currentStock and lowStockThreshold.
  */
 export function getStockStatus(item: InventoryItem): StockStatus {
-  if (item.currentStock <= 0) return "OUT";
-  if (item.currentStock <= item.lowStockThreshold) return "LOW";
+  const available = Math.max(0, item.currentStock - item.reservedStock);
+  if (available <= 0) return "OUT";
+  if (available <= item.lowStockThreshold) return "LOW";
   return "OK";
 }
 
@@ -45,16 +46,32 @@ export function getStockStatus(item: InventoryItem): StockStatus {
 export async function createInventoryItem(
   input: CreateInventoryItemInput
 ): Promise<InventoryItem> {
+  const code = input.itemCode.trim().toLowerCase();
+  const existing = await db.inventory
+    .filter((i) => i.itemCode.trim().toLowerCase() === code)
+    .first();
+  if (existing) {
+    throw new Error("Item code must be unique.");
+  }
+
+  const totalVariantStock = Array.isArray(input.variants)
+    ? input.variants.reduce((sum, v) => sum + (v.stock || 0), 0)
+    : 0;
+
   const id = generateId();
   const now = nowIso();
+  const initialStock =
+    totalVariantStock > 0 ? totalVariantStock : input.initialStock;
 
   const item: InventoryItem = {
     ...input,
     id,
     createdAt: now,
     updatedAt: now,
-    currentStock: input.initialStock,
+    initialStock,
+    currentStock: initialStock,
     reservedStock: 0,
+    variants: input.variants,
   };
 
   await db.inventory.add(item);
@@ -74,9 +91,32 @@ export async function updateInventoryItem(
     throw new Error("Inventory item not found");
   }
 
+  if (changes.itemCode) {
+    const code = changes.itemCode.trim().toLowerCase();
+    const duplicate = await db.inventory
+      .filter((i) => i.id !== id && i.itemCode.trim().toLowerCase() === code)
+      .first();
+    if (duplicate) {
+      throw new Error("Item code must be unique.");
+    }
+  }
+
+  const totalVariantStock = Array.isArray(changes.variants)
+    ? changes.variants.reduce((sum, v) => sum + (v.stock || 0), 0)
+    : undefined;
+
+  const nextReserved = existing.reservedStock;
+  const nextCurrent =
+    totalVariantStock != null
+      ? Math.max(totalVariantStock, nextReserved)
+      : changes.currentStock ?? existing.currentStock;
+
   const updated: InventoryItem = {
     ...existing,
     ...changes,
+    initialStock:
+      totalVariantStock != null ? totalVariantStock : existing.initialStock,
+    currentStock: nextCurrent,
     updatedAt: nowIso(),
   };
 
@@ -115,7 +155,7 @@ export async function listInventoryItems(): Promise<InventoryItem[]> {
  */
 export async function adjustStock(
   itemId: string,
-  options: { currentDelta?: number; reservedDelta?: number }
+  options: { currentDelta?: number; reservedDelta?: number; variantId?: string }
 ): Promise<InventoryItem | undefined> {
   const item = await db.inventory.get(itemId);
   if (!item) {
@@ -124,14 +164,28 @@ export async function adjustStock(
 
   const currentDelta = options.currentDelta ?? 0;
   const reservedDelta = options.reservedDelta ?? 0;
+  const variantId = options.variantId;
 
   const nextCurrent = Math.max(0, item.currentStock + currentDelta);
   const nextReserved = Math.max(0, item.reservedStock + reservedDelta);
+
+  let nextVariants = item.variants;
+  if (variantId && item.variants && item.variants.length > 0) {
+    nextVariants = item.variants.map((v) => {
+      if (v.id !== variantId) return v;
+      const nextStock = Math.max(
+        0,
+        v.stock + currentDelta - reservedDelta // reservedDelta reduces available stock, releasing adds back
+      );
+      return { ...v, stock: nextStock };
+    });
+  }
 
   const updated: InventoryItem = {
     ...item,
     currentStock: nextCurrent,
     reservedStock: nextReserved,
+    variants: nextVariants,
     updatedAt: nowIso(),
   };
 

@@ -1,5 +1,5 @@
 // src/App.tsx
-// Root app component – router + layout + pages.
+// Root app component - router + layout + pages.
 // Single dark-styled UI (no light/dark toggle anymore).
 
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
@@ -7,7 +7,7 @@ import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 // Main app shell (sidebar + header + content area)
 import MainLayout from "./layouts/MainLayout";
 
-// Pages – all exported as *named* components from their files.
+// Pages - all exported as *named* components from their files.
 import { DashboardPage } from "./pages/DashboardPage";
 import { InventoryPage } from "./pages/InventoryPage";
 import { LiveSessionsPage } from "./pages/LiveSessionsPage";
@@ -15,6 +15,7 @@ import { ClaimsPage } from "./pages/ClaimsPage";
 import { OrdersPage } from "./pages/OrdersPage";
 import { PaymentsPage } from "./pages/PaymentsPage";
 import { ShippingPage } from "./pages/ShippingPage";
+import { PaymentsShippingPage } from "./pages/PaymentsShippingPage";
 import { CustomersPage } from "./pages/CustomersPage";
 import { FinancePage } from "./pages/FinancePage";
 import { SettingsPage } from "./pages/SettingsPage"; // named export
@@ -36,10 +37,14 @@ export default function App() {
           <Route path="orders" element={<OrdersPage />} />
           <Route path="payments" element={<PaymentsPage />} />
           <Route path="shipping" element={<ShippingPage />} />
+          <Route
+            path="payments-shipping"
+            element={<PaymentsShippingPage />}
+          />
           <Route path="customers" element={<CustomersPage />} />
           <Route path="finance" element={<FinancePage />} />
 
-          {/* Global Settings – same dark layout as other modules */}
+          {/* Global Settings - same dark layout as other modules */}
           <Route path="settings" element={<SettingsPage />} />
 
           {/* Fallback for unknown paths */}

@@ -5,6 +5,8 @@ export interface InventoryVariant {
   id: string;
   label: string;
   stock: number;
+  costPrice?: number;
+  sellingPrice?: number;
 }
 
 export interface InventoryItem {
@@ -29,7 +31,7 @@ export interface InventoryItem {
 // 2.3 LiveSession
 export interface LiveSession {
   id: string;
-  title: string; // e.g., "FB Live 2025-12-10 – Evening"
+  title: string; // e.g., "FB Live 2025-12-10 - Evening"
   platform: "FACEBOOK" | "TIKTOK" | "SHOPEE" | "OTHER";
   channelName: string;
   startTime?: string;
@@ -59,6 +61,8 @@ export interface Claim {
   liveSessionId: string;
   inventoryItemId: string;
   variantId?: string;
+  soldOnline?: boolean; // true if sale happened outside live (e.g., online shop)
+  joyReserve?: boolean; // marked as joy reserve / no-pay
   customerId?: string;
   temporaryName: string;
   quantity: number;
@@ -235,5 +239,5 @@ export interface FinanceSnapshot {
   topSessions: FinanceSnapshotTopSession[];
   cashIn: number; // sum of payments
   cashOut: number; // cost + shipping + other expenses
-  balanceChange: number; // cashIn – cashOut
+  balanceChange: number; // cashIn - cashOut
 }

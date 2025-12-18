@@ -172,7 +172,7 @@ export function getEffectiveTheme(
  * This will affect all pages and modules since they share the same root.
  *
  * - Adds `theme-light` / `theme-dark` for our CSS variable-based styling.
- * - Adds `dark` class so Tailwind `dark:` variants work.
+ * - Adds `dark` class so Tailwind ` variants work.
  */
 export function applyTheme(theme: ThemeMode): void {
   if (typeof document === "undefined") return;

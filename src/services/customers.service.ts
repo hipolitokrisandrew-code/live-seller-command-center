@@ -1,7 +1,7 @@
 // src/services/customers.service.ts
 
 import { db } from "../core/db";
-import type { Customer, Order } from "../core/types";
+import type { Claim, Customer, Order } from "../core/types";
 
 // -----------------------------
 // Helpers
@@ -62,15 +62,12 @@ function computeStatsForOrders(orders: Order[]): CustomerStats {
   const firstOrderDate = sorted[0]?.createdAt;
   const lastOrderDate = sorted[sorted.length - 1]?.createdAt;
 
-  // Joy reserve definition:
-  //  - CANCELLED
-  //  - UNPAID
-  //  - amountPaid <= 0
+  // Joy reserve definition (stricter unpaid behavior):
+  //  - amountPaid <= 0 AND paymentStatus is not PAID
   const noPayCount = orders.filter((o) => {
-    const unpaid = o.paymentStatus === "UNPAID";
-    const cancelled = o.status === "CANCELLED";
     const noPaidAmount = safeNumber(o.amountPaid) <= 0;
-    return cancelled && unpaid && noPaidAmount;
+    const notPaid = o.paymentStatus !== "PAID";
+    return noPaidAmount && notPaid;
   }).length;
 
   const lastOrderStatus = sorted[sorted.length - 1]?.status;
@@ -161,12 +158,20 @@ export type CustomerOverviewOptions = {
 export async function getCustomerOverviewList(
   options: CustomerOverviewOptions = {}
 ): Promise<CustomerOverview[]> {
-  const [customers, orders] = await Promise.all([
+  const [customers, orders, claims] = await Promise.all([
     db.customers.toArray(),
     db.orders.toArray(),
+    db.claims.toArray(),
   ]);
 
   const searchTerm = options.search?.trim().toLowerCase() ?? "";
+
+  const displayNameToId = new Map<string, string>();
+  customers.forEach((c) => {
+    if (c.displayName) {
+      displayNameToId.set(c.displayName.trim().toLowerCase(), c.id);
+    }
+  });
 
   let filteredCustomers = customers;
 
@@ -190,9 +195,27 @@ export async function getCustomerOverviewList(
     }
   });
 
+  const joyReserveCounts = new Map<string, number>();
+  claims.forEach((claim) => {
+    if (!claim.joyReserve) return;
+    let customerId = claim.customerId;
+    if (!customerId && claim.temporaryName) {
+      const key = claim.temporaryName.trim().toLowerCase();
+      customerId = displayNameToId.get(key);
+    }
+    if (!customerId) return;
+    joyReserveCounts.set(
+      customerId,
+      (joyReserveCounts.get(customerId) ?? 0) + 1
+    );
+  });
+
   const overviews: CustomerOverview[] = filteredCustomers.map((customer) => {
     const customerOrders = ordersByCustomer.get(customer.id) ?? [];
     const stats = computeStatsForOrders(customerOrders);
+    const joyReserveFromClaims =
+      joyReserveCounts.get(customer.id) ?? 0;
+    const mergedNoPay = stats.noPayCount + joyReserveFromClaims;
 
     const customerSnapshot: Customer = {
       ...customer,
@@ -200,7 +223,7 @@ export async function getCustomerOverviewList(
       totalSpent: stats.totalSpent,
       firstOrderDate: stats.firstOrderDate,
       lastOrderDate: stats.lastOrderDate,
-      noPayCount: stats.noPayCount,
+      noPayCount: mergedNoPay,
     };
 
     return {
@@ -210,7 +233,7 @@ export async function getCustomerOverviewList(
       totalSpent: stats.totalSpent,
       firstOrderDate: stats.firstOrderDate,
       lastOrderDate: stats.lastOrderDate,
-      noPayCount: stats.noPayCount,
+      noPayCount: mergedNoPay,
       lastOrderStatus: stats.lastOrderStatus,
     };
   });
@@ -257,6 +280,20 @@ export async function getCustomerWithHistory(customerId: string): Promise<{
 }
 
 /**
+ * Lightweight list for lookup (id + names).
+ */
+export async function listCustomerBasics(): Promise<
+  Pick<Customer, "id" | "displayName" | "realName">[]
+> {
+  const customers = await db.customers.toArray();
+  return customers.map((c) => ({
+    id: c.id,
+    displayName: c.displayName,
+    realName: c.realName,
+  }));
+}
+
+/**
  * Keep existing code happy: recomputeCustomerStats is called
  * from orders.service.ts after major order changes.
  * This updates the stored aggregate fields on the Customer row.
@@ -264,18 +301,19 @@ export async function getCustomerWithHistory(customerId: string): Promise<{
 export async function recomputeCustomerStats(
   customerId: string
 ): Promise<void> {
-  const orders = await db.orders
-    .where("customerId")
-    .equals(customerId)
-    .toArray();
+  const [orders, claims] = await Promise.all([
+    db.orders.where("customerId").equals(customerId).toArray(),
+    db.claims.where("customerId").equals(customerId).toArray(),
+  ]);
 
   const stats = computeStatsForOrders(orders);
+  const joyReserveFromClaims = claims.filter((c) => c.joyReserve).length;
 
   await db.customers.update(customerId, {
     totalOrders: stats.totalOrders,
     totalSpent: stats.totalSpent,
     firstOrderDate: stats.firstOrderDate,
     lastOrderDate: stats.lastOrderDate,
-    noPayCount: stats.noPayCount,
+    noPayCount: stats.noPayCount + joyReserveFromClaims,
   });
 }

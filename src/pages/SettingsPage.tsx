@@ -1,30 +1,16 @@
-// src/pages/SettingsPage.tsx
-// Global Settings – dark card style to match Finance / Customers.
-// No light/dark theme toggle; app uses a single dark UI.
-
-import { useEffect, useState } from "react";
-import type { FormEvent, ChangeEvent } from "react";
-
+import { useEffect, useState, type ChangeEvent, type FormEvent } from "react";
 import {
   getAppSettings,
   updateAppSettings,
 } from "../services/settings.service";
+import { CARD_CLASS, INPUT_CLASS, CHECKBOX_CLASS } from "../theme/classes";
 
-// We keep the shape flexible because AppSettings / UserPreferences
-// live in the service file. To avoid fighting types here, we allow "any"
-// but confine it to this alias.
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type SettingsFormState = any;
 
-const CARD_CLASS =
-  "rounded-xl border border-slate-800 bg-slate-900 px-6 py-5 shadow-sm";
 const LABEL_CLASS =
-  "mb-1 block text-[11px] font-semibold uppercase tracking-wide text-slate-400";
-const INPUT_CLASS =
-  "block w-full rounded-md border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-slate-50 shadow-sm focus:border-emerald-500 focus:outline-none focus:ring-1 focus:ring-emerald-500";
-const SELECT_CLASS = INPUT_CLASS;
-const CHECKBOX_CLASS =
-  "h-4 w-4 rounded border-slate-600 bg-slate-900 text-emerald-500 focus:ring-emerald-500";
+  "mb-1 block text-[11px] font-semibold uppercase tracking-wide text-slate-600";
+const CHECKBOX_LABEL_CLASS = "text-xs text-slate-700";
 
 export function SettingsPage() {
   const [form, setForm] = useState<SettingsFormState | null>(null);
@@ -33,7 +19,6 @@ export function SettingsPage() {
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  // Load settings on mount
   useEffect(() => {
     let cancelled = false;
 
@@ -41,7 +26,6 @@ export function SettingsPage() {
       try {
         const settings = await getAppSettings();
         if (!cancelled) {
-          // Shallow copy so we can edit in local state
           setForm({ ...settings });
           setLoading(false);
         }
@@ -91,7 +75,6 @@ export function SettingsPage() {
     setMessage(null);
 
     try {
-      // We send the whole object – service handles id / updatedAt, etc.
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       await updateAppSettings(form as any);
       setMessage("Settings saved successfully.");
@@ -106,9 +89,11 @@ export function SettingsPage() {
   if (loading) {
     return (
       <div className="space-y-4">
-        <h1 className="text-xl font-semibold text-slate-50">Settings</h1>
+        <h1 className="text-2xl font-semibold text-slate-900">
+          Settings
+        </h1>
         <div className={CARD_CLASS}>
-          <p className="text-sm text-slate-400">Loading settings…</p>
+          <p className="text-sm text-slate-600">Loading settings...</p>
         </div>
       </div>
     );
@@ -117,7 +102,7 @@ export function SettingsPage() {
   if (!form) {
     return (
       <div className={CARD_CLASS}>
-        <p className="text-sm text-red-300">
+        <p className="text-sm text-red-600">
           Unable to load settings. Please refresh the page.
         </p>
       </div>
@@ -126,23 +111,34 @@ export function SettingsPage() {
 
   return (
     <div className="space-y-4">
-      {/* Page header */}
       <header className="mb-2">
-        <h1 className="text-xl font-semibold text-slate-50">Settings</h1>
-        <p className="mt-1 text-sm text-slate-400">
+        <h1 className="text-2xl font-semibold text-slate-900">
+          Settings
+        </h1>
+        <p className="mt-1 text-sm text-slate-600">
           Global preferences that affect Inventory, Live Sessions, Orders,
           Customers, Payments, and Finance.
         </p>
       </header>
 
       <form onSubmit={handleSubmit} className="space-y-4">
+        {/* Appearance (informational) */}
+        <section className={CARD_CLASS}>
+          <header>
+            <h2 className="text-sm font-semibold text-slate-900">Appearance</h2>
+            <p className="mt-1 text-xs text-slate-600">
+              The system uses a fixed Light theme for clarity and consistency.
+            </p>
+          </header>
+        </section>
+
         {/* Profile & Business */}
         <section className={CARD_CLASS}>
           <header>
-            <h2 className="text-sm font-semibold text-slate-50">
+            <h2 className="text-sm font-semibold text-slate-900">
               Profile &amp; Business
             </h2>
-            <p className="mt-1 text-xs text-slate-400">
+            <p className="mt-1 text-xs text-slate-600">
               Used across the app (sidebar, Finance header, future exports).
             </p>
           </header>
@@ -156,7 +152,7 @@ export function SettingsPage() {
                 className={INPUT_CLASS}
                 value={form.businessName ?? ""}
                 onChange={handleInputChange}
-                placeholder="Maria’s Closet Live"
+                placeholder="Maria's Closet Live"
               />
             </div>
 
@@ -201,10 +197,10 @@ export function SettingsPage() {
         {/* Defaults & Behavior */}
         <section className={CARD_CLASS}>
           <header>
-            <h2 className="text-sm font-semibold text-slate-50">
+            <h2 className="text-sm font-semibold text-slate-900">
               Defaults &amp; Behavior
             </h2>
-            <p className="mt-1 text-xs text-slate-400">
+            <p className="mt-1 text-xs text-slate-600">
               These defaults affect new Inventory items, Live Sessions, Orders,
               and Finance calculations.
             </p>
@@ -215,7 +211,7 @@ export function SettingsPage() {
               <label className={LABEL_CLASS}>Default platform</label>
               <select
                 name="defaultPlatform"
-                className={SELECT_CLASS}
+                className={INPUT_CLASS}
                 value={form.defaultPlatform ?? ""}
                 onChange={handleInputChange}
               >
@@ -231,7 +227,7 @@ export function SettingsPage() {
               <label className={LABEL_CLASS}>Default payment method</label>
               <select
                 name="defaultPaymentMethod"
-                className={SELECT_CLASS}
+                className={INPUT_CLASS}
                 value={form.defaultPaymentMethod ?? ""}
                 onChange={handleInputChange}
               >
@@ -255,7 +251,7 @@ export function SettingsPage() {
             </div>
 
             <div>
-              <label className={LABEL_CLASS}>Default shipping fee (₱)</label>
+              <label className={LABEL_CLASS}>Default shipping fee (PHP)</label>
               <input
                 type="number"
                 name="defaultShippingFee"
@@ -287,10 +283,7 @@ export function SettingsPage() {
                 checked={Boolean(form.showSupplierCost)}
                 onChange={handleInputChange}
               />
-              <label
-                htmlFor="showSupplierCost"
-                className="text-xs text-slate-300"
-              >
+              <label htmlFor="showSupplierCost" className={CHECKBOX_LABEL_CLASS}>
                 Show supplier cost in Inventory list
               </label>
             </div>
@@ -300,10 +293,10 @@ export function SettingsPage() {
         {/* Date / Time & Notifications */}
         <section className={CARD_CLASS}>
           <header>
-            <h2 className="text-sm font-semibold text-slate-50">
+            <h2 className="text-sm font-semibold text-slate-900">
               Date / Time &amp; Notifications
             </h2>
-            <p className="mt-1 text-xs text-slate-400">
+            <p className="mt-1 text-xs text-slate-600">
               Controls how dates are displayed and how notifications behave.
             </p>
           </header>
@@ -313,7 +306,7 @@ export function SettingsPage() {
               <label className={LABEL_CLASS}>Date format</label>
               <select
                 name="dateFormat"
-                className={SELECT_CLASS}
+                className={INPUT_CLASS}
                 value={form.dateFormat ?? "DD/MM/YYYY"}
                 onChange={handleInputChange}
               >
@@ -327,7 +320,7 @@ export function SettingsPage() {
               <label className={LABEL_CLASS}>Time format</label>
               <select
                 name="timeFormat"
-                className={SELECT_CLASS}
+                className={INPUT_CLASS}
                 value={form.timeFormat ?? "24-hour"}
                 onChange={handleInputChange}
               >
@@ -337,7 +330,7 @@ export function SettingsPage() {
             </div>
 
             <div className="flex flex-col justify-center gap-2 pt-1">
-              <label className="flex items-center gap-2 text-xs text-slate-300">
+              <label className="flex items-center gap-2 text-xs text-slate-700">
                 <input
                   type="checkbox"
                   name="enableSoundNotifications"
@@ -348,7 +341,7 @@ export function SettingsPage() {
                 Enable sound notifications (e.g., for new claims / orders)
               </label>
 
-              <label className="flex items-center gap-2 text-xs text-slate-300">
+              <label className="flex items-center gap-2 text-xs text-slate-700">
                 <input
                   type="checkbox"
                   name="enableDesktopNotifications"
@@ -365,16 +358,16 @@ export function SettingsPage() {
         {/* Footer actions */}
         <div className="flex items-center justify-between">
           <div className="space-y-1 text-xs">
-            {error && <p className="text-red-300">{error}</p>}
-            {message && !error && <p className="text-emerald-300">{message}</p>}
+            {error && <p className="text-red-600">{error}</p>}
+            {message && !error && <p className="text-emerald-600">{message}</p>}
           </div>
 
           <button
             type="submit"
             disabled={saving}
-            className="inline-flex items-center rounded-md bg-emerald-500 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-emerald-600 disabled:cursor-not-allowed disabled:opacity-70"
+            className="inline-flex items-center rounded-md bg-emerald-500 px-4 py-2 text-sm font-semibold text-slate-950 shadow-sm hover:bg-emerald-600 disabled:cursor-not-allowed disabled:opacity-70"
           >
-            {saving ? "Saving…" : "Save settings"}
+            {saving ? "Saving..." : "Save settings"}
           </button>
         </div>
       </form>
