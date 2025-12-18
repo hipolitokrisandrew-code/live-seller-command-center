@@ -53,19 +53,6 @@ function formatCustomerName(
   return `${clean.slice(0, 6)}…${clean.slice(-4)}`;
 }
 
-function formatCustomerLabel(
-  id?: string | null,
-  displayName?: string | null,
-  realName?: string | null
-): string {
-  if (displayName && displayName.trim()) return displayName.trim();
-  if (realName && realName.trim()) return realName.trim();
-  if (!id) return "Customer";
-  const clean = id.trim();
-  if (clean.length <= 10) return clean;
-  return `${clean.slice(0, 6)}…${clean.slice(-4)}`;
-}
-
 export function ShippingPage() {
   const [sessions, setSessions] = useState<LiveSession[]>([]);
   const [activeSessionId, setActiveSessionId] = useState<string | undefined>(

@@ -136,7 +136,6 @@ export async function getDashboardSummary(
     db.orderLines.toArray(),
     db.customers.toArray(),
   ]);
-  const now = new Date();
 
   const rangeFromIso = params?.from
     ? startOfDayIso(params.from)

@@ -1,7 +1,7 @@
 // src/services/customers.service.ts
 
 import { db } from "../core/db";
-import type { Claim, Customer, Order } from "../core/types";
+import type { Customer, Order } from "../core/types";
 
 // -----------------------------
 // Helpers
