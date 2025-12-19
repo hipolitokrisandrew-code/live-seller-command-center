@@ -34,7 +34,7 @@ export default function MainLayout() {
         <aside
           className={[
             "flex flex-col border-r border-slate-200 bg-white text-slate-900",
-            isSidebarOpen ? "w-64" : "w-16",
+            isSidebarOpen ? "w-64" : "w-12",
           ].join(" ")}
         >
           {/* Brand / app name */}
