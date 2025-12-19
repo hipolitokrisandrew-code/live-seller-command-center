@@ -38,12 +38,12 @@ export default function MainLayout() {
           ].join(" ")}
         >
           {/* Brand / app name */}
-          <div className="flex items-center justify-between gap-3 border-b border-slate-200 px-4 py-4">
-            <div className="flex min-w-0 items-center gap-3">
-              <div className="flex h-9 w-9 items-center justify-center rounded-full bg-emerald-500 text-sm font-bold text-slate-950">
-                LS
-              </div>
-              {isSidebarOpen ? (
+          {isSidebarOpen ? (
+            <div className="flex items-center justify-between gap-3 border-b border-slate-200 px-4 py-4">
+              <div className="flex items-center gap-3">
+                <div className="flex h-9 w-9 items-center justify-center rounded-full bg-emerald-500 text-sm font-bold text-slate-950">
+                  LS
+                </div>
                 <div className="flex flex-col">
                   <span className="text-[11px] font-medium uppercase tracking-[0.16em] text-slate-500">
                     Live Seller Command Center
@@ -52,29 +52,52 @@ export default function MainLayout() {
                     {businessName}
                   </span>
                 </div>
-              ) : null}
-            </div>
-            <button
-              type="button"
-              onClick={() => setIsSidebarOpen((prev) => !prev)}
-              className="inline-flex h-9 w-9 items-center justify-center rounded-md border border-slate-200 text-slate-600 transition hover:bg-slate-100 hover:text-slate-900"
-              aria-label={isSidebarOpen ? "Hide menu" : "Show menu"}
-            >
-              <svg
-                aria-hidden="true"
-                viewBox="0 0 24 24"
-                className="h-5 w-5"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2"
-                strokeLinecap="round"
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsSidebarOpen((prev) => !prev)}
+                className="inline-flex h-9 w-9 items-center justify-center rounded-md border border-slate-200 text-slate-600 transition hover:bg-slate-100 hover:text-slate-900"
+                aria-label="Hide menu"
               >
-                <line x1="4" y1="6" x2="20" y2="6" />
-                <line x1="4" y1="12" x2="20" y2="12" />
-                <line x1="4" y1="18" x2="20" y2="18" />
-              </svg>
-            </button>
-          </div>
+                <svg
+                  aria-hidden="true"
+                  viewBox="0 0 24 24"
+                  className="h-5 w-5"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                >
+                  <line x1="4" y1="6" x2="20" y2="6" />
+                  <line x1="4" y1="12" x2="20" y2="12" />
+                  <line x1="4" y1="18" x2="20" y2="18" />
+                </svg>
+              </button>
+            </div>
+          ) : (
+            <div className="flex items-center justify-center border-b border-slate-200 px-2 py-4">
+              <button
+                type="button"
+                onClick={() => setIsSidebarOpen((prev) => !prev)}
+                className="inline-flex h-9 w-9 items-center justify-center rounded-md border border-slate-200 text-slate-600 transition hover:bg-slate-100 hover:text-slate-900"
+                aria-label="Show menu"
+              >
+                <svg
+                  aria-hidden="true"
+                  viewBox="0 0 24 24"
+                  className="h-5 w-5"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                >
+                  <line x1="4" y1="6" x2="20" y2="6" />
+                  <line x1="4" y1="12" x2="20" y2="12" />
+                  <line x1="4" y1="18" x2="20" y2="18" />
+                </svg>
+              </button>
+            </div>
+          )}
 
           {/* Nav */}
           <nav className="flex-1 space-y-1 px-2 py-3 text-sm">
