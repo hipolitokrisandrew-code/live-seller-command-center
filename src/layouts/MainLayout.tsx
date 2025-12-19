@@ -7,42 +7,6 @@ type NavItem = {
   label: string;
 };
 
-type MenuToggleButtonProps = {
-  onClick: () => void;
-  ariaLabel: string;
-  className?: string;
-};
-
-function MenuToggleButton({ onClick, ariaLabel, className }: MenuToggleButtonProps) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      className={[
-        "inline-flex h-9 w-9 items-center justify-center rounded-md border border-slate-200 text-slate-600 transition hover:bg-slate-100 hover:text-slate-900",
-        className ?? "",
-      ]
-        .filter(Boolean)
-        .join(" ")}
-      aria-label={ariaLabel}
-    >
-      <svg
-        aria-hidden="true"
-        viewBox="0 0 24 24"
-        className="h-5 w-5"
-        fill="none"
-        stroke="currentColor"
-        strokeWidth="2"
-        strokeLinecap="round"
-      >
-        <line x1="4" y1="6" x2="20" y2="6" />
-        <line x1="4" y1="12" x2="20" y2="12" />
-        <line x1="4" y1="18" x2="20" y2="18" />
-      </svg>
-    </button>
-  );
-}
-
 const NAV_ITEMS: NavItem[] = [
   { to: "/", label: "Dashboard" },
   { to: "/inventory", label: "Inventory" },
@@ -83,10 +47,26 @@ export default function MainLayout() {
                 </span>
               </div>
             </div>
-            <MenuToggleButton
+            <button
+              type="button"
               onClick={() => setIsSidebarOpen((prev) => !prev)}
-              ariaLabel={isSidebarOpen ? "Hide menu" : "Show menu"}
-            />
+              className="inline-flex h-9 w-9 items-center justify-center rounded-md border border-slate-200 text-slate-600 transition hover:bg-slate-100 hover:text-slate-900"
+              aria-label={isSidebarOpen ? "Hide menu" : "Show menu"}
+            >
+              <svg
+                aria-hidden="true"
+                viewBox="0 0 24 24"
+                className="h-5 w-5"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+              >
+                <line x1="4" y1="6" x2="20" y2="6" />
+                <line x1="4" y1="12" x2="20" y2="12" />
+                <line x1="4" y1="18" x2="20" y2="18" />
+              </svg>
+            </button>
           </div>
 
           {/* Nav */}
