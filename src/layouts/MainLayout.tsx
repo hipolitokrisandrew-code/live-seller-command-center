@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { NavLink, Outlet } from "react-router-dom";
 import { useAppSettings } from "../hooks/useAppSettings";
 
@@ -20,6 +21,7 @@ const NAV_ITEMS: NavItem[] = [
 
 export default function MainLayout() {
   const { settings } = useAppSettings();
+  const [isSidebarOpen, setIsSidebarOpen] = useState(true);
 
   const businessName =
     settings?.businessName?.trim() || "Live Seller Command Center";
@@ -29,52 +31,111 @@ export default function MainLayout() {
     <div className="min-h-screen bg-slate-50 text-slate-900">
       <div className="flex h-screen">
         {/* Sidebar */}
-        <aside className="flex w-64 flex-col border-r border-slate-200 bg-white text-slate-900">
+        <aside
+          className={[
+            "flex flex-col border-r border-slate-200 bg-white text-slate-900",
+            isSidebarOpen ? "w-64" : "w-16",
+          ].join(" ")}
+        >
           {/* Brand / app name */}
-          <div className="flex items-center gap-3 border-b border-slate-200 px-4 py-4">
-            <div className="flex h-9 w-9 items-center justify-center rounded-full bg-emerald-500 text-sm font-bold text-slate-950">
-              LS
+          {isSidebarOpen ? (
+            <div className="flex items-center justify-between gap-3 border-b border-slate-200 px-4 py-4">
+              <div className="flex items-center gap-3">
+                <div className="flex h-9 w-9 items-center justify-center rounded-full bg-emerald-500 text-sm font-bold text-slate-950">
+                  LS
+                </div>
+                <div className="flex flex-col">
+                  <span className="text-[11px] font-medium uppercase tracking-[0.16em] text-slate-500">
+                    Live Seller Command Center
+                  </span>
+                  <span className="max-w-36 truncate text-sm font-semibold text-slate-900">
+                    {businessName}
+                  </span>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsSidebarOpen((prev) => !prev)}
+                className="inline-flex h-9 w-9 items-center justify-center rounded-md border border-slate-200 text-slate-600 transition hover:bg-slate-100 hover:text-slate-900"
+                aria-label="Hide menu"
+              >
+                <svg
+                  aria-hidden="true"
+                  viewBox="0 0 24 24"
+                  className="h-5 w-5"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                >
+                  <line x1="4" y1="6" x2="20" y2="6" />
+                  <line x1="4" y1="12" x2="20" y2="12" />
+                  <line x1="4" y1="18" x2="20" y2="18" />
+                </svg>
+              </button>
             </div>
-            <div className="flex flex-col">
-              <span className="text-[11px] font-medium uppercase tracking-[0.16em] text-slate-500">
-                Live Seller Command Center
-              </span>
-              <span className="max-w-36 truncate text-sm font-semibold text-slate-900">
-                {businessName}
-              </span>
+          ) : (
+            <div className="flex flex-col items-center gap-3 border-b border-slate-200 px-2 py-4">
+              <div className="flex h-9 w-9 items-center justify-center rounded-full bg-emerald-500 text-sm font-bold text-slate-950">
+                LS
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsSidebarOpen((prev) => !prev)}
+                className="inline-flex h-9 w-9 items-center justify-center rounded-md border border-slate-200 text-slate-600 transition hover:bg-slate-100 hover:text-slate-900"
+                aria-label="Show menu"
+              >
+                <svg
+                  aria-hidden="true"
+                  viewBox="0 0 24 24"
+                  className="h-5 w-5"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                >
+                  <line x1="4" y1="6" x2="20" y2="6" />
+                  <line x1="4" y1="12" x2="20" y2="12" />
+                  <line x1="4" y1="18" x2="20" y2="18" />
+                </svg>
+              </button>
             </div>
-          </div>
+          )}
 
           {/* Nav */}
           <nav className="flex-1 space-y-1 px-2 py-3 text-sm">
-            {NAV_ITEMS.map((item) => (
-              <NavLink
-                key={item.to}
-                to={item.to}
-                className={({ isActive }) =>
-                  [
-                    "flex items-center justify-between rounded-md px-3 py-2",
-                    "text-slate-700 hover:bg-slate-100 hover:text-slate-900",
-                    isActive
-                      ? "bg-emerald-500 font-semibold text-slate-950"
-                      : "",
-                  ]
-                    .filter(Boolean)
-                    .join(" ")
-                }
-              >
-                <span>{item.label}</span>
-              </NavLink>
-            ))}
+            {isSidebarOpen
+              ? NAV_ITEMS.map((item) => (
+                  <NavLink
+                    key={item.to}
+                    to={item.to}
+                    className={({ isActive }) =>
+                      [
+                        "flex items-center justify-between rounded-md px-3 py-2",
+                        "text-slate-700 hover:bg-slate-100 hover:text-slate-900",
+                        isActive
+                          ? "bg-emerald-500 font-semibold text-slate-950"
+                          : "",
+                      ]
+                        .filter(Boolean)
+                        .join(" ")
+                    }
+                  >
+                    <span>{item.label}</span>
+                  </NavLink>
+                ))
+              : null}
           </nav>
 
           {/* Sidebar footer */}
-          <div className="border-t border-slate-200 px-4 py-3 text-[11px] text-slate-600">
-            <p>
-              Owner: <span className="font-medium text-slate-800">{ownerName}</span>
-            </p>
-            <p className="mt-1">Works even with weak internet.</p>
-          </div>
+          {isSidebarOpen ? (
+            <div className="border-t border-slate-200 px-4 py-3 text-[11px] text-slate-600">
+              <p>
+                Owner: <span className="font-medium text-slate-800">{ownerName}</span>
+              </p>
+              <p className="mt-1">Works even with weak internet.</p>
+            </div>
+          ) : null}
         </aside>
 
         {/* Right side: header + content */}
