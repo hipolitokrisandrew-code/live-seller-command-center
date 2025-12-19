@@ -521,9 +521,7 @@ export function FinancePage() {
                           stroke={segment.color}
                           strokeWidth="6"
                           pathLength={100}
-                          strokeDasharray={`${segment.percent} ${
-                            100 - segment.percent
-                          }`}
+                          strokeDasharray={`${segment.percent} ${100 - segment.percent}`}
                           strokeDashoffset={100 - segment.start}
                         />
                       ))
@@ -556,6 +554,7 @@ export function FinancePage() {
           </div>
         </div>
       )}
+
       {hasData && snapshot ? (
         <div className={`${PANEL_CLASS} p-4`}>
           <div className="flex items-center justify-between">
