@@ -23,6 +23,11 @@
     background-color: #f8fafc; /* slate-50 */
     color: #0f172a; /* slate-900 */
   }
+
+  button[aria-label="Hide menu"],
+  button[aria-label="Show menu"] {
+    cursor: pointer;
+  }
 }
 
 /* Shared layout helpers */
