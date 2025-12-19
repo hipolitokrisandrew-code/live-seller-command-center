@@ -172,6 +172,19 @@ export function FinancePage() {
   const hasData =
     snapshot &&
     (snapshot.totalSales > 0 || snapshot.cashIn > 0 || snapshot.cashOut > 0);
+  const cashFlowMax = useMemo(() => {
+    if (!snapshot) {
+      return 1;
+    }
+    return Math.max(
+      snapshot.cashIn,
+      snapshot.cashOut,
+      snapshot.totalOtherExpenses,
+      snapshot.totalShippingCost,
+      snapshot.totalCostOfGoods,
+      1,
+    );
+  }, [snapshot]);
 
   return (
     <div className="space-y-4">
@@ -371,6 +384,151 @@ export function FinancePage() {
                     : "font-semibold text-rose-600"
                 }
               >
+                {formatCurrency(snapshot.balanceChange)}
+              </span>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {snapshot && (
+        <div className="grid gap-3 lg:grid-cols-[minmax(0,1.1fr)_minmax(0,1fr)]">
+          <div className={`${PANEL_CLASS} space-y-3 p-4`}>
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-wide text-slate-600">
+                  Sales distribution
+                </p>
+                <p className="text-xs text-slate-500">
+                  View where revenue turns into profit.
+                </p>
+              </div>
+              <span className="rounded-full bg-emerald-50 px-2 py-1 text-[11px] font-semibold text-emerald-700">
+                {formatPercent(snapshot.profitMarginPercent)} margin
+              </span>
+            </div>
+            <div className="space-y-2">
+              <div className="flex items-center justify-between text-[11px] text-slate-500">
+                <span>Total Sales</span>
+                <span className="font-semibold text-slate-900">
+                  {formatCurrency(snapshot.totalSales)}
+                </span>
+              </div>
+              <div className="h-3 overflow-hidden rounded-full bg-slate-100">
+                <div
+                  className="h-full bg-emerald-500"
+                  style={{ width: "100%" }}
+                />
+              </div>
+              <div className="grid grid-cols-2 gap-2 text-[11px] text-slate-500">
+                <div className="space-y-1 rounded-lg bg-slate-50 p-2">
+                  <div className="text-[10px] uppercase tracking-wide text-slate-400">
+                    Cost of goods
+                  </div>
+                  <div className="font-semibold text-slate-900">
+                    {formatCurrency(snapshot.totalCostOfGoods)}
+                  </div>
+                  <div className="h-1.5 rounded-full bg-slate-200">
+                    <div
+                      className="h-full rounded-full bg-slate-500"
+                      style={{
+                        width: `${Math.min(
+                          100,
+                          (snapshot.totalCostOfGoods /
+                            Math.max(snapshot.totalSales, 1)) *
+                            100,
+                        )}%`,
+                      }}
+                    />
+                  </div>
+                </div>
+                <div className="space-y-1 rounded-lg bg-slate-50 p-2">
+                  <div className="text-[10px] uppercase tracking-wide text-slate-400">
+                    Net profit
+                  </div>
+                  <div className="font-semibold text-emerald-600">
+                    {formatCurrency(snapshot.netProfit)}
+                  </div>
+                  <div className="h-1.5 rounded-full bg-emerald-100">
+                    <div
+                      className="h-full rounded-full bg-emerald-500"
+                      style={{
+                        width: `${Math.min(
+                          100,
+                          (snapshot.netProfit / Math.max(snapshot.totalSales, 1)) *
+                            100,
+                        )}%`,
+                      }}
+                    />
+                  </div>
+                </div>
+              </div>
+              <div className="rounded-lg border border-dashed border-slate-200 bg-white px-3 py-2 text-xs text-slate-600">
+                {snapshot.netProfit >= 0
+                  ? "Profit is healthy for this period. Keep the momentum by monitoring expenses."
+                  : "Net profit is negative. Review costs and pricing before the next selling cycle."}
+              </div>
+            </div>
+          </div>
+
+          <div className={`${PANEL_CLASS} space-y-3 p-4`}>
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-wide text-slate-600">
+                Cash flow snapshot
+              </p>
+              <p className="text-xs text-slate-500">
+                Compare inflows vs. key outflows.
+              </p>
+            </div>
+            {[
+              {
+                label: "Cash In",
+                value: snapshot.cashIn,
+                color: "bg-emerald-500",
+                text: "text-emerald-600",
+              },
+              {
+                label: "Cash Out",
+                value: snapshot.cashOut,
+                color: "bg-amber-500",
+                text: "text-amber-600",
+              },
+              {
+                label: "Shipping Cost",
+                value: snapshot.totalShippingCost,
+                color: "bg-slate-400",
+                text: "text-slate-600",
+              },
+              {
+                label: "Other Expenses",
+                value: snapshot.totalOtherExpenses,
+                color: "bg-rose-400",
+                text: "text-rose-600",
+              },
+            ].map((item) => (
+              <div key={item.label} className="space-y-1">
+                <div className="flex items-center justify-between text-[11px] text-slate-500">
+                  <span>{item.label}</span>
+                  <span className={`font-semibold ${item.text}`}>
+                    {formatCurrency(item.value)}
+                  </span>
+                </div>
+                <div className="h-2 rounded-full bg-slate-100">
+                  <div
+                    className={`h-full rounded-full ${item.color}`}
+                    style={{
+                      width: `${Math.min(
+                        100,
+                        (item.value / cashFlowMax) * 100,
+                      )}%`,
+                    }}
+                  />
+                </div>
+              </div>
+            ))}
+            <div className="rounded-lg bg-emerald-50 px-3 py-2 text-xs text-emerald-700">
+              Net change:{" "}
+              <span className="font-semibold">
                 {formatCurrency(snapshot.balanceChange)}
               </span>
             </div>
