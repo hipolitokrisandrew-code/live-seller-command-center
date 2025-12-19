@@ -39,23 +39,20 @@ export default function MainLayout() {
         >
           {/* Brand / app name */}
           <div className="flex items-center justify-between gap-3 border-b border-slate-200 px-4 py-4">
-            <div
-              className={[
-                "flex min-w-0 items-center gap-3",
-                isSidebarOpen ? "" : "hidden",
-              ].join(" ")}
-            >
+            <div className="flex min-w-0 items-center gap-3">
               <div className="flex h-9 w-9 items-center justify-center rounded-full bg-emerald-500 text-sm font-bold text-slate-950">
                 LS
               </div>
-              <div className="flex flex-col">
-                <span className="text-[11px] font-medium uppercase tracking-[0.16em] text-slate-500">
-                  Live Seller Command Center
-                </span>
-                <span className="max-w-36 truncate text-sm font-semibold text-slate-900">
-                  {businessName}
-                </span>
-              </div>
+              {isSidebarOpen ? (
+                <div className="flex flex-col">
+                  <span className="text-[11px] font-medium uppercase tracking-[0.16em] text-slate-500">
+                    Live Seller Command Center
+                  </span>
+                  <span className="max-w-36 truncate text-sm font-semibold text-slate-900">
+                    {businessName}
+                  </span>
+                </div>
+              ) : null}
             </div>
             <button
               type="button"
