@@ -26,6 +26,10 @@ export default function MainLayout() {
   const businessName =
     settings?.businessName?.trim() || "Live Seller Command Center";
   const ownerName = settings?.ownerName?.trim() || "Owner name not set";
+  const sidebarHeaderClassName = [
+    "flex items-center border-b border-slate-200 px-4 py-4",
+    isSidebarOpen ? "justify-between gap-3" : "justify-center",
+  ].join(" ");
 
   return (
     <div className="min-h-screen bg-slate-50 text-slate-900">
