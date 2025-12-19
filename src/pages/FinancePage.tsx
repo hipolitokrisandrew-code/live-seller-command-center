@@ -185,7 +185,7 @@ export function FinancePage() {
       1,
     );
   }, [snapshot]);
-  // Dashboard chart helpers.
+  // Dashboard chart helpers (keep during merges for visuals).
   const expenseTotal = useMemo(() => {
     if (!snapshot) {
       return 0;
