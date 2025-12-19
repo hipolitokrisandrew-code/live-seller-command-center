@@ -26,6 +26,10 @@ export default function MainLayout() {
   const businessName =
     settings?.businessName?.trim() || "Live Seller Command Center";
   const ownerName = settings?.ownerName?.trim() || "Owner name not set";
+  const sidebarHeaderClassName = [
+    "flex items-center border-b border-slate-200 px-4 py-4",
+    isSidebarOpen ? "justify-between gap-3" : "justify-center",
+  ].join(" ");
 
   return (
     <div className="min-h-screen bg-slate-50 text-slate-900">
@@ -33,12 +37,7 @@ export default function MainLayout() {
         {/* Sidebar */}
         <aside className="flex w-64 flex-col border-r border-slate-200 bg-white text-slate-900">
           {/* Brand / app name */}
-          <div
-            className={[
-              "flex items-center border-b border-slate-200 px-4 py-4",
-              isSidebarOpen ? "justify-between gap-3" : "justify-center",
-            ].join(" ")}
-          >
+          <div className={sidebarHeaderClassName}>
             <div className="flex items-center gap-3">
               <div className="flex h-9 w-9 items-center justify-center rounded-full bg-emerald-500 text-sm font-bold text-slate-950">
                 LS
