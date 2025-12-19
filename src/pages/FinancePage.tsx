@@ -15,7 +15,6 @@ import {
 type RangePreset = "TODAY" | "THIS_WEEK" | "THIS_MONTH" | "CUSTOM";
 
 const SMALL_INPUT_CLASS = `${INPUT_CLASS} px-2 py-1 text-xs`;
-const SUMMARY_CARD_CLASS = `${PANEL_CLASS} p-3`;
 
 function startOfToday() {
   const d = new Date();
