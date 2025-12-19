@@ -59,6 +59,7 @@ export default function MainLayout() {
               onClick={() => setIsSidebarOpen((prev) => !prev)}
               className="inline-flex h-9 w-9 cursor-pointer items-center justify-center rounded-md border border-slate-200 text-slate-600 transition hover:bg-slate-100 hover:text-slate-900"
               aria-label={isSidebarOpen ? "Hide menu" : "Show menu"}
+              title={isSidebarOpen ? "Hide menu" : "Show menu"}
             >
               <svg
                 aria-hidden="true"
