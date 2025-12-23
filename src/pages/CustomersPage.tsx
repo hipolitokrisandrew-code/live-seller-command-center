@@ -13,6 +13,7 @@ import {
   CardHeader,
   CardTitle,
 } from "../components/ui/Card";
+import { useScrollRetention } from "../hooks/useScrollRetention";
 
 type JoyFilter = "ALL" | "JOY_ONLY";
 
@@ -141,6 +142,11 @@ export function CustomersPage() {
   );
 
   const hasCustomers = overviews.length > 0;
+
+  const customersListRef = useScrollRetention<HTMLDivElement>(
+    !loadingList,
+    [loadingList, overviews.length]
+  );
   const joyCount = useMemo(
     () => overviews.filter((o) => o.noPayCount > 0).length,
     [overviews]
@@ -220,41 +226,27 @@ export function CustomersPage() {
 
   return (
     <Page className="space-y-6">
-      <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
-        <div className="space-y-1">
-          <h1 className="text-xl font-semibold tracking-tight text-slate-900">
-            Customers
-          </h1>
-          <p className="text-sm text-slate-600">
-            Buyer history, total spend, and joy reserve status (no pay / cancelled).
-          </p>
-        </div>
-        <div className="grid gap-2 sm:grid-cols-3">
-          <Card className="p-3">
-            <div className="text-xs font-medium text-slate-600">
-              Total customers
-            </div>
-            <div className="mt-1 text-base font-semibold tabular-nums text-slate-900">
-              {overviews.length}
-            </div>
-          </Card>
-          <Card className="p-3">
-            <div className="text-xs font-medium text-slate-600">
-              Joy reserves
-            </div>
-            <div className="mt-1 text-base font-semibold tabular-nums text-amber-700">
-              {joyCount}
-            </div>
-          </Card>
-          <Card className="p-3">
-            <div className="text-xs font-medium text-slate-600">
-              Total spent
-            </div>
-            <div className="mt-1 text-base font-semibold tabular-nums text-emerald-700">
-              {formatCurrency(totalSpentAll)}
-            </div>
-          </Card>
-        </div>
+      <div className="grid gap-2 sm:grid-cols-3">
+        <Card className="p-3">
+          <div className="text-xs font-medium text-slate-600">
+            Total customers
+          </div>
+          <div className="mt-1 text-base font-semibold tabular-nums text-slate-900">
+            {overviews.length}
+          </div>
+        </Card>
+        <Card className="p-3">
+          <div className="text-xs font-medium text-slate-600">Joy reserves</div>
+          <div className="mt-1 text-base font-semibold tabular-nums text-amber-700">
+            {joyCount}
+          </div>
+        </Card>
+        <Card className="p-3">
+          <div className="text-xs font-medium text-slate-600">Total spent</div>
+          <div className="mt-1 text-base font-semibold tabular-nums text-emerald-700">
+            {formatCurrency(totalSpentAll)}
+          </div>
+        </Card>
       </div>
 
       <div className="grid gap-6 lg:grid-cols-12">
@@ -303,7 +295,7 @@ export function CustomersPage() {
           )}
 
           {hasCustomers && (
-            <div className="max-h-[420px] overflow-y-auto">
+            <div ref={customersListRef} className="max-h-[420px] overflow-y-auto">
               <div className="overflow-x-auto">
                 <table className="min-w-full text-left text-xs">
                   <thead className={`${TABLE_HEAD_CLASS} sticky top-0`}>

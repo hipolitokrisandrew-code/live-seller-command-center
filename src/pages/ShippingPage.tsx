@@ -12,6 +12,8 @@ import {
   updateShipmentStatus,
 } from "../services/shipments.service";
 import { listCustomerBasics } from "../services/customers.service";
+import { useLiveSessionSelection } from "../hooks/useLiveSessionSelection";
+import { useScrollRetention } from "../hooks/useScrollRetention";
 import { PANEL_CLASS, MUTED_PANEL_CLASS, INPUT_CLASS } from "../theme/classes";
 
 const TABLE_HEAD_CLASS =
@@ -55,9 +57,11 @@ function formatCustomerName(
 
 export function ShippingPage() {
   const [sessions, setSessions] = useState<LiveSession[]>([]);
-  const [activeSessionId, setActiveSessionId] = useState<string | undefined>(
-    undefined
-  );
+  const {
+    sessionId: activeSessionId,
+    setSessionId: setActiveSessionId,
+    ensureValidSession,
+  } = useLiveSessionSelection("shipping");
 
   const [orders, setOrders] = useState<Order[]>([]);
   const [activeOrderId, setActiveOrderId] = useState<string | undefined>(
@@ -99,6 +103,11 @@ export function ShippingPage() {
     [sessions, activeSessionId]
   );
 
+  const queueListRef = useScrollRetention<HTMLDivElement>(
+    !loadingOrders,
+    [loadingOrders, orders.length, activeSessionId]
+  );
+
   useEffect(() => {
     void (async () => {
       try {
@@ -115,11 +124,7 @@ export function ShippingPage() {
         });
         setCustomerMap(map);
 
-        if (sessionList.length > 0) {
-          const live = sessionList.find((s) => s.status === "LIVE");
-          const firstId = (live ?? sessionList[0]).id;
-          setActiveSessionId(firstId);
-        }
+        ensureValidSession(sessionList);
       } catch (e: unknown) {
         console.error(e);
         setError("Failed to load live sessions.");
@@ -127,7 +132,7 @@ export function ShippingPage() {
         setLoadingSessions(false);
       }
     })();
-  }, []);
+  }, [ensureValidSession]);
 
   const refreshOrdersForSession = useCallback(async (sessionId: string) => {
     try {
@@ -345,17 +350,6 @@ export function ShippingPage() {
 
   return (
     <div className="space-y-4">
-      <div>
-        <h1 className="text-2xl font-semibold text-slate-900">
-          Shipping
-        </h1>
-        <p className="text-sm text-slate-600">
-          Manage shipping queue: courier, tracking number, shipping fee, and
-          delivery status. Orders auto-update to PACKING, SHIPPED, or DELIVERED
-          based on shipment status and payment.
-        </p>
-      </div>
-
       {/* Filter bar */}
       <div
         className={`${PANEL_CLASS} grid gap-3 p-3 text-sm lg:grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)]`}
@@ -457,7 +451,7 @@ export function ShippingPage() {
           <div className="border-b border-slate-200 bg-slate-50 px-3 py-2 text-xs font-semibold uppercase tracking-wide text-slate-600">
             Shipping queue for this session
           </div>
-          <div className="max-h-[420px] overflow-y-auto">
+          <div ref={queueListRef} className="max-h-[420px] overflow-y-auto">
             {loadingOrders ? (
               <div className="px-3 py-4 text-sm text-slate-600">
                 Loading orders...

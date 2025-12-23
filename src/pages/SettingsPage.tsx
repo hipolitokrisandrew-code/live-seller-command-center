@@ -152,11 +152,6 @@ export function SettingsPage() {
   if (loading) {
     return (
       <Page className="space-y-6">
-        <div className="space-y-1">
-          <h1 className="text-xl font-semibold tracking-tight text-slate-900">
-            Settings
-          </h1>
-        </div>
         <Card className="bg-slate-50">
           <CardContent className="py-3 text-xs text-slate-600">
             Loading settings...
@@ -169,11 +164,6 @@ export function SettingsPage() {
   if (!form) {
     return (
       <Page className="space-y-6">
-        <div className="space-y-1">
-          <h1 className="text-xl font-semibold tracking-tight text-slate-900">
-            Settings
-          </h1>
-        </div>
         <Card>
           <CardContent className="py-3 text-sm text-rose-700">
             Unable to load settings. Please refresh the page.
@@ -185,16 +175,6 @@ export function SettingsPage() {
 
   return (
     <Page className="space-y-6">
-      <div className="space-y-1">
-        <h1 className="text-xl font-semibold tracking-tight text-slate-900">
-          Settings
-        </h1>
-        <p className="text-sm text-slate-600">
-          Global preferences that affect Inventory, Live Sessions, Orders,
-          Customers, Payments, and Finance.
-        </p>
-      </div>
-
       <form onSubmit={handleSubmit} className="space-y-6">
         {/* Appearance (informational) */}
         <Card>

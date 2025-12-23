@@ -5,8 +5,10 @@ import {
   type DashboardSessionTile,
   type DashboardSummary,
 } from "../services/dashboard.service";
-import { useAppSettings } from "../hooks/useAppSettings";
 import { Page } from "../components/layout/Page";
+import { DashboardHelpButton } from "../components/dashboard/DashboardHelpButton";
+import { DashboardTutorialOverlay } from "../components/dashboard/DashboardTutorialOverlay";
+import { useDashboardTutorial } from "../hooks/useDashboardTutorial";
 import { Badge } from "../components/ui/Badge";
 import { Button } from "../components/ui/Button";
 import {
@@ -97,6 +99,7 @@ function LowStockTable({ items }: { items: DashboardLowStockItem[] }) {
 }
 
 export function DashboardPage() {
+  const tutorial = useDashboardTutorial();
   const [summary, setSummary] = useState<DashboardSummary | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -115,8 +118,6 @@ export function DashboardPage() {
   const [detailView, setDetailView] = useState<"pending" | "ship" | "low" | null>(
     null,
   );
-  const { settings } = useAppSettings();
-
   useEffect(() => {
     let cancelled = false;
 
@@ -150,10 +151,6 @@ export function DashboardPage() {
 
   const lowStockItems: DashboardLowStockItem[] = summary?.lowStockItems ?? [];
   const recentSessions: DashboardSessionTile[] = summary?.recentSessions ?? [];
-  const businessName =
-    settings?.businessName?.trim() || "Live Seller Command Center";
-  const ownerName = settings?.ownerName?.trim() || "Not set";
-
   function applyDateRange() {
     const from = dateFrom || dateTo || new Date().toISOString().slice(0, 10);
     const to = dateTo || dateFrom || new Date().toISOString().slice(0, 10);
@@ -169,24 +166,6 @@ export function DashboardPage() {
 
   return (
     <Page className="space-y-6">
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-        <div className="space-y-1">
-          <h1 className="text-xl font-semibold tracking-tight text-slate-900">
-            Dashboard <span className="text-slate-400">{"\u2014"}</span>{" "}
-            {businessName}
-          </h1>
-          <p className="text-sm text-slate-600">
-            Real-time command center for your live selling: benta, pending
-            payments, to-ship, and low-stock items.
-          </p>
-          <p className="text-xs text-slate-500">Owner: {ownerName}</p>
-        </div>
-        <div className="flex gap-3 text-xs text-slate-500 sm:flex-col sm:items-end sm:gap-1">
-          <span>Finance-connected</span>
-          <span>Offline-ready</span>
-        </div>
-      </div>
-
       {loading ? (
         <Card className="bg-slate-50">
           <CardContent className="py-3 text-xs text-slate-600">
@@ -201,7 +180,7 @@ export function DashboardPage() {
         </Card>
       ) : null}
 
-      <Card className="p-4">
+      <Card className="p-4" data-tour="dashboard-range">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
           <div className="flex-1 space-y-2">
             <div className="text-xs font-medium text-slate-600">
@@ -241,7 +220,10 @@ export function DashboardPage() {
       </Card>
 
       {summary ? (
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        <div
+          className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4"
+          data-tour="dashboard-stats"
+        >
           <button
             type="button"
             onClick={() => setDetailView(null)}
@@ -473,7 +455,7 @@ export function DashboardPage() {
 
       {summary ? (
         <div className="grid gap-6 lg:grid-cols-2">
-          <Card>
+          <Card data-tour="dashboard-recent-sessions">
             <CardHeader>
               <CardTitle>Recent live sessions</CardTitle>
               <CardHint>Based on paid orders per session.</CardHint>
@@ -544,7 +526,7 @@ export function DashboardPage() {
             </CardContent>
           </Card>
 
-          <Card>
+          <Card data-tour="dashboard-low-stock">
             <CardHeader>
               <CardTitle>Low stock items</CardTitle>
               <CardHint>Auto-flagged by item threshold.</CardHint>
@@ -570,7 +552,16 @@ export function DashboardPage() {
           </CardContent>
         </Card>
       ) : null}
+      <DashboardHelpButton onClick={tutorial.open} />
+      <DashboardTutorialOverlay
+        isOpen={tutorial.isOpen}
+        steps={tutorial.steps}
+        currentIndex={tutorial.currentStep}
+        onNext={tutorial.next}
+        onPrev={tutorial.prev}
+        onClose={tutorial.close}
+        onSkip={tutorial.skip}
+      />
     </Page>
   );
 }
-

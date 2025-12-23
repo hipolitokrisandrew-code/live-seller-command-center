@@ -19,6 +19,7 @@ import {
   type UpsertShipmentPayload,
 } from "../services/shipments.service";
 import { listCustomerBasics } from "../services/customers.service";
+import { useLiveSessionSelection } from "./useLiveSessionSelection";
 
 type CustomerNameMap = Record<
   string,
@@ -62,9 +63,11 @@ export interface UseOrderPaymentsAndShipping {
  */
 export function useOrderPaymentsAndShipping(): UseOrderPaymentsAndShipping {
   const [sessions, setSessions] = useState<LiveSession[]>([]);
-  const [activeSessionId, setActiveSessionId] = useState<string | undefined>(
-    undefined
-  );
+  const {
+    sessionId: activeSessionId,
+    setSessionId: setActiveSessionId,
+    ensureValidSession,
+  } = useLiveSessionSelection("payments-shipping");
 
   const [orders, setOrders] = useState<Order[]>([]);
   const [activeOrderId, setActiveOrderId] = useState<string | undefined>(
@@ -114,11 +117,7 @@ export function useOrderPaymentsAndShipping(): UseOrderPaymentsAndShipping {
         });
         setCustomerMap(map);
 
-        if (sessionList.length > 0) {
-          const live = sessionList.find((s) => s.status === "LIVE");
-          const firstId = (live ?? sessionList[0]).id;
-          setActiveSessionId(firstId);
-        }
+        ensureValidSession(sessionList);
       } catch (e) {
         console.error(e);
         setError("Failed to load live sessions.");
@@ -126,7 +125,7 @@ export function useOrderPaymentsAndShipping(): UseOrderPaymentsAndShipping {
         setLoadingSessions(false);
       }
     })();
-  }, []);
+  }, [ensureValidSession]);
 
   const refreshOrdersForSession = useCallback(async (sessionId: string) => {
     try {

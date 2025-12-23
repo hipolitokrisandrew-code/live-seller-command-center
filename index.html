@@ -11,9 +11,16 @@
           const stored = localStorage.getItem("lscc-theme");
           const theme = stored === "light" || stored === "dark" ? stored : "dark";
           if (theme === "dark") {
-            document.documentElement.classList.add("dark");
-            document.body.classList.add("dark");
-            document.documentElement.dataset.theme = "dark";
+            const root = document.documentElement;
+            root.classList.add("dark");
+            root.dataset.theme = "dark";
+            if (document.body) {
+              document.body.classList.add("dark");
+            } else {
+              window.addEventListener("DOMContentLoaded", () => {
+                document.body?.classList.add("dark");
+              });
+            }
           }
         } catch (err) {
           console.warn("Theme bootstrap failed", err);

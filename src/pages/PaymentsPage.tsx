@@ -13,6 +13,8 @@ import {
   voidPayment,
 } from "../services/payments.service";
 import { listCustomerBasics } from "../services/customers.service";
+import { useLiveSessionSelection } from "../hooks/useLiveSessionSelection";
+import { useScrollRetention } from "../hooks/useScrollRetention";
 import { PANEL_CLASS, MUTED_PANEL_CLASS, INPUT_CLASS } from "../theme/classes";
 
 const TABLE_HEAD_CLASS =
@@ -56,9 +58,11 @@ function formatCustomerLabel(
 
 export function PaymentsPage() {
   const [sessions, setSessions] = useState<LiveSession[]>([]);
-  const [activeSessionId, setActiveSessionId] = useState<string | undefined>(
-    undefined
-  );
+  const {
+    sessionId: activeSessionId,
+    setSessionId: setActiveSessionId,
+    ensureValidSession,
+  } = useLiveSessionSelection("payments");
 
   const [orders, setOrders] = useState<Order[]>([]);
   const [activeOrderId, setActiveOrderId] = useState<string | undefined>(
@@ -108,6 +112,11 @@ export function PaymentsPage() {
     [filteredOrders, activeOrderId]
   );
 
+  const paymentsListRef = useScrollRetention<HTMLDivElement>(
+    !loadingOrderDetail,
+    [loadingOrderDetail, filteredPayments.length, activeOrderId]
+  );
+
   useEffect(() => {
     void (async () => {
       try {
@@ -122,11 +131,7 @@ export function PaymentsPage() {
         });
         setCustomerMap(map);
 
-        if (list.length > 0) {
-          const live = list.find((s) => s.status === "LIVE");
-          const firstId = (live ?? list[0]).id;
-          setActiveSessionId(firstId);
-        }
+        ensureValidSession(list);
       } catch (e: unknown) {
         console.error(e);
         setError("Failed to load live sessions.");
@@ -134,7 +139,7 @@ export function PaymentsPage() {
         setLoadingSessions(false);
       }
     })();
-  }, []);
+  }, [ensureValidSession]);
 
   const refreshOrdersForSession = useCallback(async (sessionId: string) => {
     try {
@@ -319,15 +324,6 @@ export function PaymentsPage() {
 
   return (
     <div className="space-y-4">
-      <div>
-        <h1 className="text-2xl font-semibold text-slate-900">Payments</h1>
-        <p className="text-sm text-slate-600">
-          Track all payments per order. When you add a payment, the order&apos;s
-          paid amount, balance, and status will auto-update and connect to
-          finance.
-        </p>
-      </div>
-
       {/* Filters: session + order selector */}
       <div
         className={`${PANEL_CLASS} grid gap-3 p-3 text-sm lg:grid-cols-[minmax(0,1.3fr)_minmax(0,1fr)]`}
@@ -600,7 +596,7 @@ export function PaymentsPage() {
                 )}
               </div>
             </div>
-            <div className="max-h-64 overflow-y-auto">
+            <div ref={paymentsListRef} className="max-h-64 overflow-y-auto">
               {loadingOrderDetail ? (
                 <div className="px-3 py-4 text-sm text-slate-600">
                   Loading payments...

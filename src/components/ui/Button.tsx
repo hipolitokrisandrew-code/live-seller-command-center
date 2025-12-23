@@ -1,6 +1,6 @@
 import * as React from "react";
 
-type ButtonVariant = "primary" | "secondary" | "danger";
+type ButtonVariant = "primary" | "secondary" | "danger" | "dangerSolid";
 type ButtonSize = "md" | "sm";
 
 type ButtonProps = React.ButtonHTMLAttributes<HTMLButtonElement> & {
@@ -21,6 +21,8 @@ const VARIANT_CLASS: Record<ButtonVariant, string> = {
     "border border-slate-200 bg-white text-slate-900 hover:bg-slate-50",
   danger:
     "border border-rose-500/70 bg-transparent text-rose-700 hover:bg-rose-50",
+  dangerSolid:
+    "border border-rose-600 bg-rose-600 text-white hover:border-rose-700 hover:bg-rose-700",
 };
 
 const SIZE_CLASS: Record<ButtonSize, string> = {
@@ -40,4 +42,3 @@ export const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
 );
 
 Button.displayName = "Button";
-

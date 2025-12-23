@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { LiveSession } from "../core/types";
 import {
   createLiveSession,
@@ -9,6 +9,9 @@ import {
 } from "../services/liveSessions.service";
 import { PANEL_CLASS, INPUT_CLASS } from "../theme/classes";
 import { useNotification } from "../hooks/useNotification";
+import { LiveSessionsHelpButton } from "../components/liveSessions/LiveSessionsHelpButton";
+import { LiveSessionsTutorialOverlay } from "../components/liveSessions/LiveSessionsTutorialOverlay";
+import { useLiveSessionsTutorial } from "../hooks/useLiveSessionsTutorial";
 
 type PlatformFilter = "ALL" | LiveSession["platform"];
 type StatusFilter = "ALL" | LiveSession["status"];
@@ -41,6 +44,14 @@ const TABLE_HEAD_CLASS =
   "border-b border-slate-200 bg-slate-50 text-xs uppercase text-slate-600";
 const LABEL_CLASS =
   "text-xs font-medium text-slate-700";
+const LIVE_SESSIONS_FORM_STEPS = new Set([
+  "live-sessions-form",
+  "live-sessions-form-title",
+  "live-sessions-form-platform",
+  "live-sessions-form-targets",
+  "live-sessions-form-notes",
+  "live-sessions-form-save",
+]);
 
 function formatDateTime(iso?: string) {
   if (!iso) return "-";
@@ -94,6 +105,7 @@ function renderStatusBadge(status: LiveSession["status"]) {
 }
 
 export function LiveSessionsPage() {
+  const tutorial = useLiveSessionsTutorial();
   const [sessions, setSessions] = useState<LiveSession[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -107,6 +119,8 @@ export function LiveSessionsPage() {
   const [isEditing, setIsEditing] = useState(false);
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
   const { notify } = useNotification();
+  const tutorialInitialFormOpen = useRef<boolean | null>(null);
+  const tutorialAutoOpened = useRef(false);
 
   const refreshSessions = useCallback(async () => {
     try {
@@ -127,12 +141,60 @@ export function LiveSessionsPage() {
     void refreshSessions();
   }, [refreshSessions]);
 
-  function openCreateForm() {
+  const openCreateForm = useCallback(() => {
     setForm(defaultForm);
     setIsEditing(false);
     setIsFormOpen(true);
     setError(null);
-  }
+  }, []);
+
+  useEffect(() => {
+    if (tutorial.isOpen) {
+      if (tutorialInitialFormOpen.current === null) {
+        tutorialInitialFormOpen.current = isFormOpen;
+        tutorialAutoOpened.current = false;
+      }
+      return;
+    }
+
+    if (
+      tutorialAutoOpened.current &&
+      !tutorialInitialFormOpen.current &&
+      isFormOpen
+    ) {
+      setIsFormOpen(false);
+    }
+
+    tutorialInitialFormOpen.current = null;
+    tutorialAutoOpened.current = false;
+  }, [tutorial.isOpen, isFormOpen]);
+
+  useEffect(() => {
+    if (!tutorial.isOpen) return;
+    const stepId = tutorial.steps[tutorial.currentStep]?.id;
+    const shouldShowForm = stepId ? LIVE_SESSIONS_FORM_STEPS.has(stepId) : false;
+
+    if (shouldShowForm && !isFormOpen) {
+      openCreateForm();
+      tutorialAutoOpened.current = true;
+      return;
+    }
+
+    if (
+      !shouldShowForm &&
+      tutorialAutoOpened.current &&
+      !tutorialInitialFormOpen.current &&
+      isFormOpen
+    ) {
+      setIsFormOpen(false);
+    }
+  }, [
+    tutorial.isOpen,
+    tutorial.currentStep,
+    tutorial.steps,
+    isFormOpen,
+    openCreateForm,
+  ]);
 
   function openEditForm(session: LiveSession) {
     setForm({
@@ -350,28 +412,19 @@ export function LiveSessionsPage() {
 
   return (
     <div className="space-y-4">
-      <div className="flex items-start justify-between gap-4">
-        <div>
-          <h1 className="text-2xl font-semibold text-slate-900">
-            Live Sessions
-          </h1>
-          <p className="text-sm text-slate-600">
-            Planuhin at i-track ang bawat live: platform, target sales, at
-            status (Planned, Live, Paused, Ended, Closed).
-          </p>
-        </div>
-
+      <div className="flex justify-end">
         <button
           type="button"
           onClick={openCreateForm}
-          className="rounded-md bg-emerald-500 px-4 py-2 text-sm font-medium text-slate-950 shadow-sm hover:bg-emerald-600"
+          className="w-full rounded-md bg-emerald-500 px-4 py-2 text-sm font-medium text-slate-950 shadow-sm hover:bg-emerald-600 sm:w-auto"
+          data-tour="live-sessions-add-button"
         >
           + New session
         </button>
       </div>
 
       {/* Filters */}
-      <div className={FILTER_PANEL_CLASS}>
+      <div className={FILTER_PANEL_CLASS} data-tour="live-sessions-filters">
         <div className="flex min-w-[220px] flex-1 items-center gap-2">
           <span className="text-slate-600">Search:</span>
           <input
@@ -424,7 +477,7 @@ export function LiveSessionsPage() {
       )}
 
       {/* Sessions table */}
-      <div className={TABLE_WRAPPER_CLASS}>
+      <div className={TABLE_WRAPPER_CLASS} data-tour="live-sessions-table">
         <table className="min-w-full text-left text-sm">
           <thead className={TABLE_HEAD_CLASS}>
             <tr>
@@ -435,7 +488,9 @@ export function LiveSessionsPage() {
               <th className="px-3 py-2">Started</th>
               <th className="px-3 py-2">Duration</th>
               <th className="px-3 py-2">Targets</th>
-              <th className="px-3 py-2 text-right">Actions</th>
+              <th className="px-3 py-2 text-right" data-tour="live-sessions-row-actions">
+                Actions
+              </th>
             </tr>
           </thead>
           <tbody>
@@ -513,7 +568,10 @@ export function LiveSessionsPage() {
       {/* Slide-over form */}
       {isFormOpen && (
         <div className="fixed inset-0 z-20 flex items-center justify-center bg-black/40 px-4">
-          <div className="flex h-[90vh] w-full max-w-3xl flex-col rounded-lg border border-slate-200 bg-white p-6 shadow-2xl">
+          <div
+            className="flex h-[90vh] w-full max-w-3xl flex-col rounded-lg border border-slate-200 bg-white p-6 shadow-2xl"
+            data-tour="live-sessions-form"
+          >
             <div className="mb-3 flex items-center justify-between">
               <div>
                 <h2 className="text-lg font-semibold text-slate-900">
@@ -537,7 +595,7 @@ export function LiveSessionsPage() {
               onSubmit={handleFormSubmit}
               className="flex flex-1 flex-col gap-3 overflow-y-auto"
             >
-              <div className="space-y-1">
+              <div className="space-y-1" data-tour="live-sessions-form-title">
                 <label className={LABEL_CLASS}>Title</label>
                 <input
                   type="text"
@@ -549,7 +607,7 @@ export function LiveSessionsPage() {
                 />
               </div>
 
-              <div className="space-y-1">
+              <div className="space-y-1" data-tour="live-sessions-form-platform">
                 <label className={LABEL_CLASS}>Platform</label>
                 <select
                   value={form.platform}
@@ -583,7 +641,7 @@ export function LiveSessionsPage() {
                 </div>
               )}
 
-              <div className="space-y-1">
+              <div className="space-y-1" data-tour="live-sessions-form-platform">
                 <label className={LABEL_CLASS}>Channel / page name</label>
                 <input
                   type="text"
@@ -597,7 +655,7 @@ export function LiveSessionsPage() {
                 />
               </div>
 
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-2 gap-3" data-tour="live-sessions-form-targets">
                 <div className="space-y-1">
                   <label className={LABEL_CLASS}>
                     Target sales (PHP, optional)
@@ -628,7 +686,7 @@ export function LiveSessionsPage() {
                 </div>
               </div>
 
-              <div className="space-y-1">
+              <div className="space-y-1" data-tour="live-sessions-form-notes">
                 <label className={LABEL_CLASS}>Notes (optional)</label>
                 <textarea
                   value={form.notes}
@@ -645,7 +703,10 @@ export function LiveSessionsPage() {
                 </div>
               )}
 
-              <div className="mt-2 flex justify-end gap-2 border-t border-slate-200 pt-3">
+              <div
+                className="mt-2 flex justify-end gap-2 border-t border-slate-200 pt-3"
+                data-tour="live-sessions-form-save"
+              >
                 <button
                   type="button"
                   onClick={closeForm}
@@ -664,6 +725,16 @@ export function LiveSessionsPage() {
           </div>
         </div>
       )}
+      <LiveSessionsHelpButton onClick={tutorial.open} />
+      <LiveSessionsTutorialOverlay
+        isOpen={tutorial.isOpen}
+        steps={tutorial.steps}
+        currentIndex={tutorial.currentStep}
+        onNext={tutorial.next}
+        onPrev={tutorial.prev}
+        onClose={tutorial.close}
+        onSkip={tutorial.skip}
+      />
     </div>
   );
 }

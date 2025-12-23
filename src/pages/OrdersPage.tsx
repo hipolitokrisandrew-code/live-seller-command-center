@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import type { LiveSession, Order, PaymentStatus } from "../core/types";
 import { listLiveSessions } from "../services/liveSessions.service";
@@ -6,6 +6,7 @@ import {
   buildOrdersFromClaims,
   getOrderDetail,
   listOrdersForSession,
+  syncUnpaidOrdersForSession,
   updateOrderDiscount,
   updateOrderFees,
   type OrderDetail,
@@ -17,6 +18,9 @@ import { getShipmentForOrder } from "../services/shipments.service";
 import { type InvoiceTemplate } from "../services/settings.service";
 import { useAppSettings } from "../hooks/useAppSettings";
 import { useNotification } from "../hooks/useNotification";
+import { useOrdersTutorial } from "../hooks/useOrdersTutorial";
+import { useLiveSessionSelection } from "../hooks/useLiveSessionSelection";
+import { useScrollRetention } from "../hooks/useScrollRetention";
 import {
   calcIncludedTaxFromTotals,
   clampRatePct,
@@ -32,6 +36,8 @@ import {
   CardHint,
   CardTitle,
 } from "../components/ui/Card";
+import { OrdersHelpButton } from "../components/orders/OrdersHelpButton";
+import { OrdersTutorialOverlay } from "../components/orders/OrdersTutorialOverlay";
 
 function cn(...classes: Array<string | false | null | undefined>) {
   return classes.filter(Boolean).join(" ");
@@ -630,10 +636,13 @@ function shippingBadgeVariant(
 }
 
 export function OrdersPage() {
+  const tutorial = useOrdersTutorial();
   const [sessions, setSessions] = useState<LiveSession[]>([]);
-  const [activeSessionId, setActiveSessionId] = useState<string | undefined>(
-    undefined
-  );
+  const {
+    sessionId: activeSessionId,
+    setSessionId: setActiveSessionId,
+    ensureValidSession,
+  } = useLiveSessionSelection("orders");
 
   const [orders, setOrders] = useState<Order[]>([]);
   const [selectedOrderId, setSelectedOrderId] = useState<string | null>(null);
@@ -656,6 +665,8 @@ export function OrdersPage() {
 
   const [error, setError] = useState<string | null>(null);
   const [infoMessage, setInfoMessage] = useState<string | null>(null);
+  const infoTimeoutRef = useRef<number | null>(null);
+  const buildMessageRef = useRef<string | null>(null);
   const { settings } = useAppSettings();
   const [receiptMessage, setReceiptMessage] = useState<string | null>(null);
   const [discountInput, setDiscountInput] = useState<string>("");
@@ -678,10 +689,7 @@ export function OrdersPage() {
         });
         setCustomerMap(map);
 
-        if (list.length > 0) {
-          const live = list.find((s) => s.status === "LIVE");
-          setActiveSessionId((live ?? list[0]).id);
-        }
+        ensureValidSession(list);
       } catch (e: unknown) {
         console.error(e);
         setError("Failed to load live sessions.");
@@ -689,13 +697,14 @@ export function OrdersPage() {
         setLoadingSessions(false);
       }
     })();
-  }, []);
+  }, [ensureValidSession]);
 
   const refreshOrders = useCallback(
     async (sessionId: string, preferOrderId?: string) => {
       try {
         setLoadingOrders(true);
         setError(null);
+        await syncUnpaidOrdersForSession(sessionId);
         const list = await listOrdersForSession(sessionId);
         setOrders(list);
 
@@ -785,6 +794,11 @@ export function OrdersPage() {
     });
   }, [orders, paymentFilter, statusFilter]);
 
+  const ordersListRef = useScrollRetention<HTMLDivElement>(
+    !loadingOrders,
+    [loadingOrders, filteredOrders.length]
+  );
+
   useEffect(() => {
     if (
       selectedOrderId &&
@@ -804,7 +818,7 @@ export function OrdersPage() {
     }
   }, [filteredOrders, selectedOrderId, loadOrderDetail]);
 
-  async function handleBuildFromClaims() {
+  async function handleBuildFromClaims(options?: { silent?: boolean }) {
     if (!activeSessionId) return;
     setBuilding(true);
     setError(null);
@@ -812,16 +826,31 @@ export function OrdersPage() {
 
     try {
       const result = await buildOrdersFromClaims(activeSessionId);
-      setInfoMessage(
-        `Created ${result.createdOrders} order(s) with ${result.createdLines} line(s) from accepted claims.`
-      );
+      if (!options?.silent) {
+        if (result.createdLines === 0) {
+          setTimedBuildMessage("No new accepted claims to build.");
+        } else {
+          setTimedBuildMessage(
+            `Created ${result.createdOrders} order(s) with ${result.createdLines} line(s) from accepted claims.`
+          );
+        }
+      }
       await refreshOrders(activeSessionId);
       setAutoBuildAttempted(true);
-      notify("Orders built from claims", "success");
+      if (!options?.silent) {
+        notify(
+          result.createdLines === 0
+            ? "No new accepted claims to build"
+            : "Orders built from claims",
+          "success"
+        );
+      }
     } catch (e: unknown) {
       console.error(e);
       setError("Failed to build orders from claims.");
-      notify("Failed to build orders from claims", "error");
+      if (!options?.silent) {
+        notify("Failed to build orders from claims", "error");
+      }
     } finally {
       setBuilding(false);
     }
@@ -904,7 +933,7 @@ export function OrdersPage() {
       orders.length === 0
     ) {
       setAutoBuildAttempted(true);
-      void handleBuildFromClaims();
+      void handleBuildFromClaims({ silent: true });
     }
     // intentionally omit handleBuildFromClaims to avoid recreating the effect on every render
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -961,6 +990,35 @@ export function OrdersPage() {
     : "VAT \u2022 Not applied";
   const vatAmountValue = fromCents(includedTax.taxCents);
   const vatNetValue = fromCents(includedTax.netCents);
+
+  useEffect(() => {
+    return () => {
+      if (infoTimeoutRef.current) {
+        window.clearTimeout(infoTimeoutRef.current);
+        infoTimeoutRef.current = null;
+      }
+    };
+  }, []);
+
+  const setTimedBuildMessage = useCallback((message: string | null) => {
+    if (infoTimeoutRef.current) {
+      window.clearTimeout(infoTimeoutRef.current);
+      infoTimeoutRef.current = null;
+    }
+
+    buildMessageRef.current = message;
+    setInfoMessage(message);
+
+    if (!message) return;
+
+    infoTimeoutRef.current = window.setTimeout(() => {
+      setInfoMessage((current) =>
+        current === buildMessageRef.current ? null : current
+      );
+      buildMessageRef.current = null;
+      infoTimeoutRef.current = null;
+    }, 4500);
+  }, []);
 
   async function openInvoicePdf() {
     if (!selectedDetail) return;
@@ -1043,20 +1101,8 @@ export function OrdersPage() {
 
   return (
     <Page className="space-y-6">
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-        <div className="space-y-1">
-          <h1 className="text-xl font-semibold tracking-tight text-slate-900">
-            Orders
-          </h1>
-          <p className="text-sm text-slate-600">
-            Auto-built mula sa accepted claims per customer. Dito mo makikita ang
-            items, totals, hiwalay na katayuan ng bayad at padala.
-          </p>
-        </div>
-      </div>
-
       {/* Business profile context */}
-      <Card className="bg-slate-50">
+      <Card className="bg-slate-50" data-tour="orders-business">
         <CardContent className="py-3">
           <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
             <div className="min-w-0">
@@ -1084,124 +1130,125 @@ export function OrdersPage() {
       </Card>
 
       {/* Filter bar */}
-      <Card className="p-4">
-        <div className="flex flex-col gap-3 lg:flex-row lg:items-end">
-          <div className="flex-1 space-y-1">
-            <label className="text-xs font-medium text-slate-600">
-              Live session
-            </label>
-            <select
-              value={activeSessionId ?? ""}
-              onChange={(e) =>
-                setActiveSessionId(e.target.value ? e.target.value : undefined)
-              }
-              className={CONTROL_CLASS}
-            >
-              {sessions.length === 0 && <option value="">No sessions yet</option>}
-              {sessions.length > 0 && activeSessionId == null && (
-                <option value="">Select session...</option>
-              )}
-              {sessions.map((s) => (
-                <option key={s.id} value={s.id}>
-                  {s.title} ({s.platform})
-                </option>
-              ))}
-            </select>
-          </div>
+      <Card className="p-4" data-tour="orders-filters">
+        <div className="flex flex-col gap-4">
+          <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+            <div className="flex-1 space-y-1">
+              <label className="text-xs font-medium text-slate-600">
+                Live session
+              </label>
+              <select
+                value={activeSessionId ?? ""}
+                onChange={(e) =>
+                  setActiveSessionId(e.target.value ? e.target.value : undefined)
+                }
+                className={CONTROL_CLASS}
+              >
+                {sessions.length === 0 && <option value="">No sessions yet</option>}
+                {sessions.length > 0 && activeSessionId == null && (
+                  <option value="">Select session...</option>
+                )}
+                {sessions.map((s) => (
+                  <option key={s.id} value={s.id}>
+                    {s.title} ({s.platform})
+                  </option>
+                ))}
+              </select>
+            </div>
 
-          <div className="flex flex-col gap-2 lg:items-end">
-            <div className="flex flex-wrap items-center gap-2">
+            <div className="flex flex-col items-start gap-1 lg:items-end">
               <Button
-                variant="secondary"
+                variant="primary"
                 onClick={handleBuildFromClaims}
                 disabled={!activeSessionId || building}
+                data-tour="orders-build"
+                className="w-full sm:w-auto"
               >
                 {building ? "Building..." : "Build from claims"}
               </Button>
+              <span className="text-[11px] text-slate-500">
+                Build new orders from accepted claims.
+              </span>
+            </div>
+          </div>
+
+          <div className="grid gap-2">
+            <div className="flex items-center gap-2" data-tour="orders-payment-filter">
+              <span className="text-xs font-medium text-slate-600">Payment</span>
+              <div className="flex max-w-full gap-2 overflow-x-auto pb-1">
+                {(["ALL", "UNPAID", "PARTIAL", "PAID"] as const).map((p) => {
+                  const active =
+                    paymentFilter === p ||
+                    (paymentFilter === "ALL" && p === "ALL");
+                  const count =
+                    p === "ALL"
+                      ? orders.length
+                      : paymentCounts[p as PaymentStatus] ?? 0;
+
+                  return (
+                    <Button
+                      key={p}
+                      size="sm"
+                      variant="secondary"
+                      onClick={() =>
+                        setPaymentFilter(p === "ALL" ? "ALL" : (p as PaymentStatus))
+                      }
+                      className={cn(
+                        "rounded-full font-medium",
+                        active
+                          ? "border-emerald-500 bg-emerald-50 text-emerald-700 hover:bg-emerald-100"
+                          : "border-slate-200 bg-white text-slate-700 hover:bg-slate-50",
+                      )}
+                    >
+                      <span className="capitalize">
+                        {p === "ALL" ? "All" : p.toLowerCase()}
+                      </span>
+                      <span
+                        className={cn(
+                          "ml-1 tabular-nums",
+                          active ? "text-emerald-700/80" : "text-slate-500",
+                        )}
+                      >
+                        {count}
+                      </span>
+                    </Button>
+                  );
+                })}
+              </div>
             </div>
 
-            <div className="grid gap-2">
-              <div className="flex items-center gap-2">
-                <span className="text-xs font-medium text-slate-600">
-                  Payment
-                </span>
-                <div className="flex max-w-full gap-2 overflow-x-auto pb-1">
-                  {(["ALL", "UNPAID", "PARTIAL", "PAID"] as const).map((p) => {
-                    const active =
-                      paymentFilter === p ||
-                      (paymentFilter === "ALL" && p === "ALL");
-                    const count =
-                      p === "ALL"
-                        ? orders.length
-                        : paymentCounts[p as PaymentStatus] ?? 0;
-
-                    return (
-                      <Button
-                        key={p}
-                        size="sm"
-                        variant="secondary"
-                        onClick={() =>
-                          setPaymentFilter(
-                            p === "ALL" ? "ALL" : (p as PaymentStatus),
-                          )
-                        }
-                        className={cn(
-                          "rounded-full font-medium",
-                          active
-                            ? "border-emerald-500 bg-emerald-50 text-emerald-700 hover:bg-emerald-100"
-                            : "border-slate-200 bg-white text-slate-700 hover:bg-slate-50",
-                        )}
-                      >
-                        <span className="capitalize">
-                          {p === "ALL" ? "All" : p.toLowerCase()}
-                        </span>
-                        <span
-                          className={cn(
-                            "ml-1 tabular-nums",
-                            active ? "text-emerald-700/80" : "text-slate-500",
-                          )}
-                        >
-                          {count}
-                        </span>
-                      </Button>
-                    );
-                  })}
-                </div>
-              </div>
-
-              <div className="flex items-center gap-2">
-                <span className="text-xs font-medium text-slate-600">Status</span>
-                <div className="flex max-w-full gap-2 overflow-x-auto pb-1">
-                  {(
-                    [
-                      "ALL",
-                      "PENDING_PAYMENT",
-                      "PARTIALLY_PAID",
-                      "PAID",
-                      "PACKING",
-                      "SHIPPED",
-                      "DELIVERED",
-                    ] as const
-                  ).map((s) => {
-                    const active = statusFilter === s;
-                    return (
-                      <Button
-                        key={s}
-                        size="sm"
-                        variant="secondary"
-                        onClick={() => setStatusFilter(s === "ALL" ? "ALL" : s)}
-                        className={cn(
-                          "rounded-full font-medium whitespace-nowrap",
-                          active
-                            ? "border-slate-900 bg-slate-100 text-slate-900 hover:bg-slate-200"
-                            : "border-slate-200 bg-white text-slate-700 hover:bg-slate-50",
-                        )}
-                      >
-                        {s === "ALL" ? "All" : s.replace(/_/g, " ").toLowerCase()}
-                      </Button>
-                    );
-                  })}
-                </div>
+            <div className="flex items-center gap-2" data-tour="orders-status-filter">
+              <span className="text-xs font-medium text-slate-600">Status</span>
+              <div className="flex max-w-full gap-2 overflow-x-auto pb-1">
+                {(
+                  [
+                    "ALL",
+                    "PENDING_PAYMENT",
+                    "PARTIALLY_PAID",
+                    "PAID",
+                    "PACKING",
+                    "SHIPPED",
+                    "DELIVERED",
+                  ] as const
+                ).map((s) => {
+                  const active = statusFilter === s;
+                  return (
+                    <Button
+                      key={s}
+                      size="sm"
+                      variant="secondary"
+                      onClick={() => setStatusFilter(s === "ALL" ? "ALL" : s)}
+                      className={cn(
+                        "rounded-full font-medium whitespace-nowrap",
+                        active
+                          ? "border-slate-900 bg-slate-100 text-slate-900 hover:bg-slate-200"
+                          : "border-slate-200 bg-white text-slate-700 hover:bg-slate-50",
+                      )}
+                    >
+                      {s === "ALL" ? "All" : s.replace(/_/g, " ").toLowerCase()}
+                    </Button>
+                  );
+                })}
               </div>
             </div>
           </div>
@@ -1209,7 +1256,7 @@ export function OrdersPage() {
       </Card>
 
       {activeSession ? (
-        <Card className="bg-slate-50">
+        <Card className="bg-slate-50" data-tour="orders-active-session">
           <CardContent className="py-2">
             <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-slate-600">
               <span className="min-w-0">
@@ -1249,7 +1296,10 @@ export function OrdersPage() {
       {/* Main content: orders list + details */}
       <div className="grid gap-6 lg:grid-cols-12">
         {/* Orders list */}
-        <Card className="overflow-hidden lg:col-span-5">
+        <Card
+          className="flex min-h-0 flex-col overflow-hidden lg:col-span-5"
+          data-tour="orders-list"
+        >
           <CardHeader className="items-start">
             <div>
               <CardTitle>Orders</CardTitle>
@@ -1263,18 +1313,18 @@ export function OrdersPage() {
               {filteredOrders.length} order(s)
             </span>
           </CardHeader>
-          <CardContent className="p-0">
+          <CardContent className="flex min-h-0 flex-1 flex-col p-0">
             {loadingOrders ? (
-              <div className="px-4 py-6 text-center text-sm text-slate-600">
+              <div className="flex h-full items-center justify-center px-4 py-6 text-center text-sm text-slate-600">
                 Loading orders...
               </div>
             ) : !hasOrders ? (
-              <div className="px-4 py-6 text-center text-sm text-slate-600">
+              <div className="flex h-full items-center justify-center px-4 py-6 text-center text-sm text-slate-600">
                 Walang orders pa for this session. {acceptedClaimsCount} accepted
                 claim(s) found — click "Build from claims" to generate orders.
               </div>
             ) : (
-              <div className="max-h-[420px] overflow-y-auto">
+              <div ref={ordersListRef} className="flex-1 overflow-y-auto">
                 <div className="overflow-x-auto">
                   <table className="min-w-full text-left text-sm">
                     <thead className={TABLE_HEAD_CLASS}>
@@ -1362,7 +1412,10 @@ export function OrdersPage() {
         </Card>
 
         {/* Order detail */}
-        <Card className="flex flex-col overflow-hidden lg:col-span-7">
+        <Card
+          className="flex flex-col overflow-hidden lg:col-span-7"
+          data-tour="orders-details"
+        >
           <CardHeader className="items-start">
             <div>
               <CardTitle>Order details</CardTitle>
@@ -1375,6 +1428,7 @@ export function OrdersPage() {
               variant="secondary"
               onClick={openInvoicePdf}
               disabled={!selectedDetail}
+              data-tour="orders-invoice"
             >
               Invoice PDF
             </Button>
@@ -1550,7 +1604,10 @@ export function OrdersPage() {
               </div>
 
               {/* Discount controls */}
-              <div className="rounded-lg bg-slate-50 px-3 py-3 text-xs">
+              <div
+                className="rounded-lg bg-slate-50 px-3 py-3 text-xs"
+                data-tour="orders-discount"
+              >
                 <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
                   <div>
                     <div className="text-xs font-medium text-slate-600">
@@ -1620,7 +1677,7 @@ export function OrdersPage() {
               </div>
 
               {/* Lines */}
-              <div className="space-y-2">
+              <div className="space-y-2" data-tour="orders-lines">
                 <div className="flex items-center justify-between">
                   <div className="text-xs font-medium text-slate-600">Items</div>
                   <div className="text-xs text-slate-500">
@@ -1681,6 +1738,16 @@ export function OrdersPage() {
           </CardContent>
         </Card>
       )}
+      <OrdersHelpButton onClick={tutorial.open} />
+      <OrdersTutorialOverlay
+        isOpen={tutorial.isOpen}
+        steps={tutorial.steps}
+        currentIndex={tutorial.currentStep}
+        onNext={tutorial.next}
+        onPrev={tutorial.prev}
+        onClose={tutorial.close}
+        onSkip={tutorial.skip}
+      />
     </Page>
   );
 }

@@ -2,7 +2,12 @@
 // Root app component - router + layout + pages.
 // Single dark-styled UI (no light/dark toggle anymore).
 
-import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
+import {
+  BrowserRouter,
+  Routes,
+  Route,
+  Navigate,
+} from "react-router-dom";
 
 // Main app shell (sidebar + header + content area)
 import MainLayout from "./layouts/MainLayout";

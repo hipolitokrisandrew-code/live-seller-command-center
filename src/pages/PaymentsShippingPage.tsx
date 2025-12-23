@@ -3,6 +3,8 @@ import type { FormEvent } from "react";
 import { useEffect, useMemo, useState } from "react";
 import type { Order, Payment, Shipment } from "../core/types";
 import { useOrderPaymentsAndShipping } from "../hooks/useOrderPaymentsAndShipping";
+import { usePaymentsShippingTutorial } from "../hooks/usePaymentsShippingTutorial";
+import { useScrollRetention } from "../hooks/useScrollRetention";
 import { Page } from "../components/layout/Page";
 import { Badge } from "../components/ui/Badge";
 import { Button } from "../components/ui/Button";
@@ -12,6 +14,8 @@ import {
   CardHeader,
   CardTitle,
 } from "../components/ui/Card";
+import { PaymentsShippingHelpButton } from "../components/paymentsShipping/PaymentsShippingHelpButton";
+import { PaymentsShippingTutorialOverlay } from "../components/paymentsShipping/PaymentsShippingTutorialOverlay";
 
 // Combined Payments + Shipping workspace.
 // Routing: add Route path="payments-shipping" to App.tsx and point the sidebar there (see MainLayout).
@@ -104,6 +108,7 @@ function paymentRecordBadgeVariant(
 }
 
 export function PaymentsShippingPage() {
+  const tutorial = usePaymentsShippingTutorial();
   const {
     sessions,
     activeSessionId,
@@ -202,6 +207,16 @@ export function PaymentsShippingPage() {
     if (paymentMethodFilter === "ALL") return payments;
     return payments.filter((p) => p.method === paymentMethodFilter);
   }, [payments, paymentMethodFilter]);
+
+  const paymentsListRef = useScrollRetention<HTMLDivElement>(
+    !loadingOrderData,
+    [loadingOrderData, filteredPayments.length, activeOrderId]
+  );
+
+  const queueListRef = useScrollRetention<HTMLDivElement>(
+    !loadingOrders,
+    [loadingOrders, queueOrders.length, activeSessionId]
+  );
 
   useEffect(() => {
     if (
@@ -344,19 +359,12 @@ export function PaymentsShippingPage() {
   }
   return (
     <Page className="space-y-6">
-      <div className="space-y-1">
-        <h1 className="text-xl font-semibold tracking-tight text-slate-900">
-          Payments &amp; Shipping
-        </h1>
-        <p className="text-sm text-slate-600">
-          One workspace to review an order, record payments, and update shipment
-          details. Statuses stay in sync with finance and fulfillment.
-        </p>
-      </div>
-
       <Card>
         <CardContent className="grid gap-4 md:grid-cols-2">
-          <div className="space-y-2 md:pr-4 md:border-r md:border-slate-200">
+          <div
+            className="space-y-2 md:pr-4 md:border-r md:border-slate-200"
+            data-tour="payments-shipping-session"
+          >
             <label className="text-xs font-medium text-slate-600">
               Live session
             </label>
@@ -396,7 +404,7 @@ export function PaymentsShippingPage() {
             )}
           </div>
 
-          <div className="space-y-3 md:pl-4">
+          <div className="space-y-3 md:pl-4" data-tour="payments-shipping-order">
             <div className="space-y-2">
               <label className="text-xs font-medium text-slate-600">Order</label>
               <select
@@ -437,7 +445,7 @@ export function PaymentsShippingPage() {
               )}
             </div>
 
-            <div className="space-y-2">
+            <div className="space-y-2" data-tour="payments-shipping-payment-filter">
               <div className="text-xs font-medium text-slate-600">
                 Filter by payment
               </div>
@@ -500,7 +508,7 @@ export function PaymentsShippingPage() {
 
       <div className="grid gap-6 lg:grid-cols-12">
         <div className="space-y-6 lg:col-span-6">
-          <Card>
+          <Card data-tour="payments-shipping-summary">
             <CardHeader>
               <CardTitle>Order summary</CardTitle>
             </CardHeader>
@@ -625,7 +633,7 @@ export function PaymentsShippingPage() {
             )}
           </Card>
 
-          <Card>
+          <Card data-tour="payments-shipping-payments">
             <CardHeader className="flex flex-col items-start gap-3 sm:flex-row sm:items-center sm:justify-between">
               <CardTitle>Payments for this order</CardTitle>
               <div className="flex max-w-full items-center gap-2 overflow-x-auto pb-1 text-xs text-slate-600">
@@ -668,7 +676,7 @@ export function PaymentsShippingPage() {
               </div>
             </CardHeader>
             <CardContent className="p-0">
-              <div className="max-h-64 overflow-y-auto">
+              <div ref={paymentsListRef} className="max-h-64 overflow-y-auto">
                 {loadingOrderData ? (
                   <div className="px-4 py-4 text-sm text-slate-600">
                     Loading payments...
@@ -744,7 +752,7 @@ export function PaymentsShippingPage() {
             </CardContent>
           </Card>
 
-          <Card>
+          <Card data-tour="payments-shipping-add-payment">
             <CardHeader>
               <CardTitle>Add payment</CardTitle>
             </CardHeader>
@@ -856,7 +864,7 @@ export function PaymentsShippingPage() {
           </Card>
         </div>
         <div className="space-y-6 lg:col-span-6">
-          <Card>
+          <Card data-tour="payments-shipping-shipment">
             <CardHeader>
               <CardTitle>Shipment details</CardTitle>
             </CardHeader>
@@ -1104,12 +1112,12 @@ export function PaymentsShippingPage() {
             </CardContent>
           </Card>
 
-          <Card>
+          <Card data-tour="payments-shipping-queue">
             <CardHeader>
               <CardTitle>Shipping queue for this session</CardTitle>
             </CardHeader>
             <CardContent className="p-0">
-              <div className="max-h-[420px] overflow-y-auto">
+              <div ref={queueListRef} className="max-h-[420px] overflow-y-auto">
                 {loadingOrders ? (
                   <div className="px-4 py-4 text-sm text-slate-600">
                     Loading orders...
@@ -1210,6 +1218,16 @@ export function PaymentsShippingPage() {
           </CardContent>
         </Card>
       )}
+      <PaymentsShippingHelpButton onClick={tutorial.open} />
+      <PaymentsShippingTutorialOverlay
+        isOpen={tutorial.isOpen}
+        steps={tutorial.steps}
+        currentIndex={tutorial.currentStep}
+        onNext={tutorial.next}
+        onPrev={tutorial.prev}
+        onClose={tutorial.close}
+        onSkip={tutorial.skip}
+      />
     </Page>
   );
 }

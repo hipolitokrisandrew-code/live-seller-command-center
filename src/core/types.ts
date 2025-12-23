@@ -112,6 +112,8 @@ export interface Order {
 export interface OrderLine {
   id: string;
   orderId: string;
+  // Link back to the source claim (used to remove lines when claims change).
+  claimId?: string;
   inventoryItemId: string;
   variantId?: string;
   itemCodeSnapshot: string;

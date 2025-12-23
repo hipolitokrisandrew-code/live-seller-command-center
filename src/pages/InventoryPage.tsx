@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { InventoryItem, InventoryVariant } from "../core/types";
 import {
   createInventoryItem,
@@ -18,7 +18,10 @@ import {
 import { INPUT_CLASS } from "../theme/classes";
 import { useAppSettings } from "../hooks/useAppSettings";
 import { useNotification } from "../hooks/useNotification";
+import { useInventoryTutorial } from "../hooks/useInventoryTutorial";
 import { Page } from "../components/layout/Page";
+import { InventoryHelpButton } from "../components/inventory/InventoryHelpButton";
+import { InventoryTutorialOverlay } from "../components/inventory/InventoryTutorialOverlay";
 import { Badge } from "../components/ui/Badge";
 import { Button } from "../components/ui/Button";
 import {
@@ -75,14 +78,21 @@ const emptyForm: FormState = {
 };
 
 const TABLE_WRAPPER_CLASS =
-  "rounded-xl border border-slate-200 bg-white shadow-sm overflow-x-auto md:max-h-[65vh] md:overflow-y-auto";
+  "w-full rounded-xl border border-slate-200 bg-white shadow-sm overflow-x-auto md:max-h-[65vh] md:overflow-y-auto";
 const TABLE_HEAD_CLASS =
-  "border-b border-slate-200 bg-slate-50 text-xs uppercase tracking-wide text-slate-500 sticky top-0 z-10";
+  "border-b border-slate-200 bg-slate-50 text-[11px] uppercase tracking-wide text-slate-500 sticky top-0 z-10";
 const LABEL_CLASS = "text-xs font-medium text-slate-600";
 const CONTROL_CLASS =
   "h-9 w-full rounded-md border border-slate-200 bg-white px-3 text-sm text-slate-900 shadow-sm focus:border-emerald-500 focus:outline-none focus:ring-2 focus:ring-emerald-500/30";
 const CHECKBOX_CLASS =
   "h-4 w-4 rounded border-slate-300 text-emerald-600 focus:ring-emerald-500";
+const ADD_FORM_TUTORIAL_STEPS = new Set([
+  "inventory-add-form",
+  "inventory-add-essentials",
+  "inventory-add-variants",
+  "inventory-add-pricing",
+  "inventory-add-save",
+]);
 
 function loadRestockHistory(itemId: string) {
   try {
@@ -135,6 +145,9 @@ export function InventoryPage() {
   const [expandedItems, setExpandedItems] = useState<Set<string>>(
     () => new Set()
   );
+  const tutorial = useInventoryTutorial();
+  const tutorialInitialFormOpen = useRef<boolean | null>(null);
+  const tutorialAutoOpened = useRef(false);
 
   const refreshItems = useCallback(async () => {
     try {
@@ -171,13 +184,61 @@ export function InventoryPage() {
     void refreshItems();
   }, [refreshItems]);
 
-  function openCreateForm() {
+  const openCreateForm = useCallback(() => {
     setForm(emptyForm);
     setIsEditing(false);
     setError(null);
     setRestockHistory([]);
     setIsFormOpen(true);
-  }
+  }, []);
+
+  useEffect(() => {
+    if (tutorial.isOpen) {
+      if (tutorialInitialFormOpen.current === null) {
+        tutorialInitialFormOpen.current = isFormOpen;
+        tutorialAutoOpened.current = false;
+      }
+      return;
+    }
+
+    if (
+      tutorialAutoOpened.current &&
+      !tutorialInitialFormOpen.current &&
+      isFormOpen
+    ) {
+      setIsFormOpen(false);
+    }
+
+    tutorialInitialFormOpen.current = null;
+    tutorialAutoOpened.current = false;
+  }, [tutorial.isOpen, isFormOpen]);
+
+  useEffect(() => {
+    if (!tutorial.isOpen) return;
+    const stepId = tutorial.steps[tutorial.currentStep]?.id;
+    const shouldShowForm = stepId ? ADD_FORM_TUTORIAL_STEPS.has(stepId) : false;
+
+    if (shouldShowForm && !isFormOpen) {
+      openCreateForm();
+      tutorialAutoOpened.current = true;
+      return;
+    }
+
+    if (
+      !shouldShowForm &&
+      tutorialAutoOpened.current &&
+      !tutorialInitialFormOpen.current &&
+      isFormOpen
+    ) {
+      setIsFormOpen(false);
+    }
+  }, [
+    tutorial.isOpen,
+    tutorial.currentStep,
+    tutorial.steps,
+    isFormOpen,
+    openCreateForm,
+  ]);
 
   async function openEditForm(item: InventoryItem) {
     const mainImage = await getItemImage(item.id);
@@ -637,31 +698,24 @@ export function InventoryPage() {
   const tableColumnCount = showCostInList ? 7 : 6;
 
   return (
+    // Page is full width; MainLayout provides the fluid padding.
     <Page className="space-y-6">
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-        <div className="space-y-1">
-          <h1 className="text-xl font-semibold tracking-tight text-slate-900">
-            Inventory
-          </h1>
-          <p className="text-sm text-slate-600">
-            Dito mo ilalagay lahat ng items na binebenta mo sa live - with
-            codes, presyo, at stock. Connected to claims, orders, at finance.
-          </p>
-        </div>
-
+      <div className="flex justify-end">
         <Button
           variant="primary"
           onClick={openCreateForm}
           className="w-full sm:w-auto"
+          data-tour="inventory-add-button"
         >
           + Add item
         </Button>
       </div>
 
       {/* Filters */}
-      <Card className="p-4">
-        <div className="flex flex-col gap-3 lg:flex-row lg:items-end">
-          <div className="flex-1 space-y-1">
+      <Card className="p-3 md:p-4" data-tour="inventory-filters">
+        {/* Grid keeps filters full width on small screens, single row on large screens. */}
+        <div className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_160px_auto] lg:items-end">
+          <div className="space-y-1">
             <label className={LABEL_CLASS}>Search</label>
             <input
               type="text"
@@ -671,7 +725,7 @@ export function InventoryPage() {
               className={CONTROL_CLASS}
             />
           </div>
-          <div className="w-full space-y-1 lg:w-40">
+          <div className="space-y-1">
             <label className={LABEL_CLASS}>Status</label>
             <select
               value={statusFilter}
@@ -686,7 +740,7 @@ export function InventoryPage() {
               <option value="DISCONTINUED">Discontinued</option>
             </select>
           </div>
-          <div className="flex flex-wrap items-center gap-4 lg:ml-auto lg:justify-end">
+          <div className="flex flex-wrap items-center gap-4 lg:justify-end">
             <label className="inline-flex items-center gap-2 text-xs font-medium text-slate-600">
               <input
                 type="checkbox"
@@ -716,19 +770,21 @@ export function InventoryPage() {
       )}
 
       {/* Table */}
-      <div className={TABLE_WRAPPER_CLASS}>
+      <div className={TABLE_WRAPPER_CLASS} data-tour="inventory-table">
         <table className="min-w-full text-left text-sm">
           <thead className={TABLE_HEAD_CLASS}>
             <tr>
-              <th className="px-4 py-2">Item</th>
+              <th className="px-3 py-2">Item</th>
               {showCostInList ? (
-                <th className="px-4 py-2 text-right">Cost</th>
+                <th className="px-3 py-2 text-right">Cost</th>
               ) : null}
-              <th className="px-4 py-2 text-right">Price</th>
-              <th className="px-4 py-2">Stock</th>
-              <th className="px-4 py-2 text-center">Stock status</th>
-              <th className="px-4 py-2 text-center">Status</th>
-              <th className="px-4 py-2 text-right">Actions</th>
+              <th className="px-3 py-2 text-right">Price</th>
+              <th className="px-3 py-2">Stock</th>
+              <th className="px-3 py-2 text-center">Stock status</th>
+              <th className="px-3 py-2 text-center">Status</th>
+              <th className="px-3 py-2 text-right" data-tour="inventory-row-actions">
+                Actions
+              </th>
             </tr>
           </thead>
           <tbody className="text-sm">
@@ -736,7 +792,7 @@ export function InventoryPage() {
               <tr>
                 <td
                   colSpan={tableColumnCount}
-                  className="px-4 py-6 text-center text-sm text-slate-600"
+                  className="px-3 py-6 text-center text-sm text-slate-600"
                 >
                   Loading inventory...
                 </td>
@@ -745,7 +801,7 @@ export function InventoryPage() {
               <tr>
                 <td
                   colSpan={tableColumnCount}
-                  className="px-4 py-6 text-center text-sm text-slate-600"
+                  className="px-3 py-6 text-center text-sm text-slate-600"
                 >
                   Walang items pa. Click "Add item" para magsimula.
                 </td>
@@ -760,7 +816,7 @@ export function InventoryPage() {
                 return (
                   <React.Fragment key={item.id}>
                     <tr className="border-t border-slate-200 odd:bg-slate-50/50 hover:bg-slate-50">
-                      <td className="px-4 py-2">
+                      <td className="px-3 py-1.5">
                         <div className="flex items-center gap-3">
                           {itemImages[item.id] ? (
                             <img
@@ -796,12 +852,12 @@ export function InventoryPage() {
                       </td>
 
                       {showCostInList ? (
-                        <td className="px-4 py-2 text-right text-xs text-slate-700 whitespace-nowrap">
+                        <td className="px-3 py-1.5 text-right text-xs text-slate-700 whitespace-nowrap">
                           {formatCurrency(item.costPrice)}
                         </td>
                       ) : null}
 
-                      <td className="px-4 py-2 text-right text-xs whitespace-nowrap">
+                      <td className="px-3 py-1.5 text-right text-xs whitespace-nowrap">
                         <div className="flex flex-col items-end leading-tight">
                           <span className="font-semibold tabular-nums text-slate-900">
                             {formatCurrency(item.sellingPrice)}
@@ -814,7 +870,7 @@ export function InventoryPage() {
                         </div>
                       </td>
 
-                      <td className="px-4 py-2 text-xs text-slate-700">
+                      <td className="px-3 py-1.5 text-xs text-slate-700">
                         <div className="flex flex-col">
                           <span>
                             Available:{" "}
@@ -832,8 +888,8 @@ export function InventoryPage() {
                         </div>
                       </td>
 
-                      <td className="px-4 py-2 text-center">{renderStockBadge(item)}</td>
-                      <td className="px-4 py-2 text-center">
+                      <td className="px-3 py-1.5 text-center">{renderStockBadge(item)}</td>
+                      <td className="px-3 py-1.5 text-center">
                         <Badge
                           variant="neutral"
                           className="text-[11px] uppercase tracking-wide"
@@ -841,7 +897,7 @@ export function InventoryPage() {
                           {item.status}
                         </Badge>
                       </td>
-                      <td className="px-4 py-2 text-right">
+                      <td className="px-3 py-1.5 text-right">
                         {confirmDeleteId === item.id ? (
                           <div className="flex flex-nowrap items-center justify-end gap-2">
                             <span className="text-[11px] font-medium text-rose-700">
@@ -849,9 +905,8 @@ export function InventoryPage() {
                             </span>
                             <Button
                               size="sm"
-                              variant="danger"
+                              variant="dangerSolid"
                               onClick={() => void handleDelete(item.id)}
-                              className="border-rose-600 bg-rose-600 text-white hover:border-rose-700 hover:bg-rose-700"
                             >
                               Confirm
                             </Button>
@@ -922,7 +977,7 @@ export function InventoryPage() {
                               key={`${item.id}-${variant.id}`}
                               className="border-t border-slate-200 bg-slate-50 text-xs"
                             >
-                              <td className="px-4 py-2">
+                              <td className="px-3 py-1.5">
                                 <div className="flex items-center gap-3 pl-4">
                                   {variantImages[variant.id] ? (
                                     <img
@@ -966,7 +1021,7 @@ export function InventoryPage() {
                               </td>
 
                               {showCostInList ? (
-                                <td className="px-4 py-2 text-right text-xs text-slate-700 whitespace-nowrap">
+                                <td className="px-3 py-1.5 text-right text-xs text-slate-700 whitespace-nowrap">
                                   {formatCurrency(variantCost)}
                                   {variant.costPrice == null ? (
                                     <span className="ml-1 text-[10px] text-slate-500">
@@ -976,7 +1031,7 @@ export function InventoryPage() {
                                 </td>
                               ) : null}
 
-                              <td className="px-4 py-2 text-right text-xs text-slate-700 whitespace-nowrap">
+                              <td className="px-3 py-1.5 text-right text-xs text-slate-700 whitespace-nowrap">
                                 {formatCurrency(variantPrice)}
                                 {variant.sellingPrice == null ? (
                                   <span className="ml-1 text-[10px] text-slate-500">
@@ -985,7 +1040,7 @@ export function InventoryPage() {
                                 ) : null}
                               </td>
 
-                              <td className="px-4 py-2 text-xs text-slate-700">
+                              <td className="px-3 py-1.5 text-xs text-slate-700">
                                 <div className="flex flex-col leading-tight">
                                   <span>
                                     Available:{" "}
@@ -1005,8 +1060,8 @@ export function InventoryPage() {
                                 </div>
                               </td>
 
-                              <td className="px-4 py-2 text-center">{variantBadge}</td>
-                              <td className="px-4 py-2 text-center">
+                              <td className="px-3 py-1.5 text-center">{variantBadge}</td>
+                              <td className="px-3 py-1.5 text-center">
                                 <Badge
                                   variant="neutral"
                                   className="text-[11px] uppercase tracking-wide"
@@ -1014,7 +1069,7 @@ export function InventoryPage() {
                                   {item.status}
                                 </Badge>
                               </td>
-                              <td className="px-4 py-2 text-right text-[11px] text-slate-500">
+                              <td className="px-3 py-1.5 text-right text-[11px] text-slate-500">
                                 Edit via parent
                               </td>
                             </tr>
@@ -1032,7 +1087,10 @@ export function InventoryPage() {
       {/* Slide-over style form */}
       {isFormOpen && (
         <div className="fixed inset-0 z-20 flex items-center justify-center bg-black/40 px-4">
-          <div className="flex h-[90vh] w-full max-w-4xl flex-col overflow-y-auto overflow-x-hidden rounded-lg border border-slate-200 bg-white p-6 shadow-2xl">
+          <div
+            className="flex h-[90vh] w-full max-w-4xl flex-col overflow-y-auto overflow-x-hidden rounded-lg border border-slate-200 bg-white p-6 shadow-2xl"
+            data-tour="inventory-add-form"
+          >
             <div className="mb-3 flex items-center justify-between">
               <div>
                 <h2 className="text-lg font-semibold text-slate-900">
@@ -1058,7 +1116,10 @@ export function InventoryPage() {
             >
               {/* Essentials map directly to InventoryItem fields (itemCode, name, category, status). */}
               {/* Essentials */}
-              <div className="space-y-3 rounded-md border border-slate-200 bg-slate-50 p-3 dark:border-slate-700 dark:bg-slate-800/60">
+              <div
+                className="space-y-3 rounded-md border border-slate-200 bg-slate-50 p-3 dark:border-slate-700 dark:bg-slate-800/60"
+                data-tour="inventory-add-essentials"
+              >
                 <div className="flex items-center justify-between">
                   <div>
                     <div className="text-xs font-semibold uppercase tracking-wide text-slate-600 dark:text-slate-300">
@@ -1137,7 +1198,10 @@ export function InventoryPage() {
               </div>
 
               {/* Variants (after essentials) */}
-              <div className="space-y-3 rounded-md border border-slate-200 bg-white p-3 shadow-sm dark:border-slate-700 dark:bg-slate-900/40">
+              <div
+                className="space-y-3 rounded-md border border-slate-200 bg-white p-3 shadow-sm dark:border-slate-700 dark:bg-slate-900/40"
+                data-tour="inventory-add-variants"
+              >
                 <div className="flex items-center justify-between">
                   <div>
                     <div className="text-xs font-semibold uppercase tracking-wide text-slate-600 dark:text-slate-300">
@@ -1365,7 +1429,10 @@ export function InventoryPage() {
 
               {/* Pricing & Stock */}
               {form.variantMode === "SINGLE" && (
-                <div className="space-y-3 rounded-md border border-slate-200 bg-white p-3 shadow-sm dark:border-slate-700 dark:bg-slate-900/40">
+                <div
+                  className="space-y-3 rounded-md border border-slate-200 bg-white p-3 shadow-sm dark:border-slate-700 dark:bg-slate-900/40"
+                  data-tour="inventory-add-pricing"
+                >
                   <div className="flex items-center justify-between">
                     <div>
                       <div className="text-xs font-semibold uppercase tracking-wide text-slate-600 dark:text-slate-300">
@@ -1512,7 +1579,10 @@ export function InventoryPage() {
                 </div>
               )}
 
-              <div className="mt-2 flex justify-end gap-2 border-t border-slate-200 pt-3">
+              <div
+                className="mt-2 flex justify-end gap-2 border-t border-slate-200 pt-3"
+                data-tour="inventory-add-save"
+              >
                 <button
                   type="button"
                   onClick={closeForm}
@@ -1546,6 +1616,16 @@ export function InventoryPage() {
           </div>
         </div>
       )}
+      <InventoryHelpButton onClick={tutorial.open} />
+      <InventoryTutorialOverlay
+        isOpen={tutorial.isOpen}
+        steps={tutorial.steps}
+        currentIndex={tutorial.currentStep}
+        onNext={tutorial.next}
+        onPrev={tutorial.prev}
+        onClose={tutorial.close}
+        onSkip={tutorial.skip}
+      />
     </Page>
   );
 }

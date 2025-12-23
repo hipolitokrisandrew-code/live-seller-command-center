@@ -25,6 +25,12 @@ import {
   CardHint,
   CardTitle,
 } from "../components/ui/Card";
+import { ItemSearchSelect } from "../components/claims/ItemSearchSelect";
+import { ClaimsHelpButton } from "../components/claims/ClaimsHelpButton";
+import { ClaimsTutorialOverlay } from "../components/claims/ClaimsTutorialOverlay";
+import { useClaimsTutorial } from "../hooks/useClaimsTutorial";
+import { useLiveSessionSelection } from "../hooks/useLiveSessionSelection";
+import { useScrollRetention } from "../hooks/useScrollRetention";
 
 type StatusFilter = "ALL" | Claim["status"];
 
@@ -83,6 +89,19 @@ function getItemAvailable(item: InventoryItem): number {
   return Math.max(0, item.currentStock - item.reservedStock);
 }
 
+function getItemTotals(item: InventoryItem) {
+  if (item.variants?.length) {
+    return item.variants.reduce(
+      (totals, variant) => ({
+        onHand: totals.onHand + (variant.stock ?? 0),
+        reserved: totals.reserved + (variant.reservedStock ?? 0),
+      }),
+      { onHand: 0, reserved: 0 }
+    );
+  }
+  return { onHand: item.currentStock, reserved: item.reservedStock };
+}
+
 function renderStatusBadge(status: Claim["status"]) {
   switch (status) {
     case "ACCEPTED":
@@ -120,14 +139,18 @@ function renderStatusBadge(status: Claim["status"]) {
 }
 
 export function ClaimsPage() {
+  const tutorial = useClaimsTutorial();
   const [sessions, setSessions] = useState<LiveSession[]>([]);
   const [inventory, setInventory] = useState<InventoryItem[]>([]);
   const [claims, setClaims] = useState<Claim[]>([]);
-  const [itemSearch, setItemSearch] = useState("");
+  const [includeOutOfStock, setIncludeOutOfStock] = useState(false);
+  const [itemFieldError, setItemFieldError] = useState<string | null>(null);
 
-  const [activeSessionId, setActiveSessionId] = useState<string | undefined>(
-    undefined
-  );
+  const {
+    sessionId: activeSessionId,
+    setSessionId: setActiveSessionId,
+    ensureValidSession,
+  } = useLiveSessionSelection("claims");
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("ALL");
   const [hideCancelledJoy, setHideCancelledJoy] = useState(false);
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
@@ -163,12 +186,12 @@ export function ClaimsPage() {
   const initData = useCallback(async () => {
     try {
       setLoading(true);
-        const [sessionList, inventoryList] = await Promise.all([
-          listLiveSessions(),
-          listInventoryItems(),
-        ]);
+      const [sessionList, inventoryList] = await Promise.all([
+        listLiveSessions(),
+        listInventoryItems(),
+      ]);
 
-        setSessions(sessionList);
+      setSessions(sessionList);
       setInventory(inventoryList);
       const entries = await Promise.all(
         inventoryList.map(async (item) => {
@@ -188,10 +211,7 @@ export function ClaimsPage() {
       }
       setVariantImages(Object.fromEntries(variantEntries));
 
-      if (sessionList.length > 0) {
-        const live = sessionList.find((s) => s.status === "LIVE");
-        setActiveSessionId((live ?? sessionList[0]).id);
-      }
+      ensureValidSession(sessionList);
     } catch (e: unknown) {
       console.error(e);
       setError("Failed to load sessions or inventory.");
@@ -199,7 +219,7 @@ export function ClaimsPage() {
     } finally {
       setLoading(false);
     }
-  }, [notify]);
+  }, [ensureValidSession, notify]);
 
   const refreshInventory = useCallback(async () => {
     const inventoryList = await listInventoryItems();
@@ -283,11 +303,24 @@ export function ClaimsPage() {
     }));
   }, [form.inventoryItemId, inventoryMap]);
 
-  const availableInventory = useMemo(() => {
-    return inventory.filter(
-      (item) => item.status === "ACTIVE" && getItemAvailable(item) > 0
-    );
+  const activeInventory = useMemo(() => {
+    return inventory.filter((item) => item.status === "ACTIVE");
   }, [inventory]);
+
+  const claimItemOptions = useMemo(() => {
+    return activeInventory.map((item) => {
+      const totals = getItemTotals(item);
+      return {
+        id: item.id,
+        code: item.itemCode,
+        name: item.name,
+        category: item.category,
+        onHand: totals.onHand,
+        reserved: totals.reserved,
+        available: getItemAvailable(item),
+      };
+    });
+  }, [activeInventory]);
 
   const variantAvailable = useMemo(() => {
     if (!form.inventoryItemId || !form.variantId) return null;
@@ -297,35 +330,31 @@ export function ClaimsPage() {
     return getVariantAvailable(variant);
   }, [form.inventoryItemId, form.variantId, inventoryMap]);
 
-  function itemOptionLabel(item: InventoryItem): string {
-    const available = getItemAvailable(item);
-    return `${item.itemCode} - ${item.name} (${available} avail)`;
-  }
-
-  const filteredInventory = useMemo(() => {
-    const term = itemSearch.trim().toLowerCase();
-    if (!term) return availableInventory;
-    return availableInventory.filter(
-      (item) =>
-        item.itemCode.toLowerCase().includes(term) ||
-        item.name.toLowerCase().includes(term) ||
-        (item.category ?? "").toLowerCase().includes(term)
-    );
-  }, [availableInventory, itemSearch]);
-
   useEffect(() => {
-    if (
-      form.inventoryItemId &&
-      !availableInventory.some((i) => i.id === form.inventoryItemId)
-    ) {
-      // Clear selection if item went out of stock
+    if (!form.inventoryItemId) return;
+    const selected = inventoryMap.get(form.inventoryItemId);
+    if (!selected || selected.status !== "ACTIVE") {
+      // Clear selection if item becomes unavailable.
       setForm((prev) => ({ ...prev, inventoryItemId: "", variantId: undefined }));
+      setItemFieldError("Selected item is no longer available. Please choose another.");
+      return;
     }
-  }, [availableInventory, form.inventoryItemId]);
+
+    if (!includeOutOfStock && getItemAvailable(selected) <= 0) {
+      // Keep default behavior: in-stock only when toggle is off.
+      setForm((prev) => ({ ...prev, inventoryItemId: "", variantId: undefined }));
+      setItemFieldError("Item is out of stock. Toggle include out-of-stock to view it.");
+    }
+  }, [form.inventoryItemId, includeOutOfStock, inventoryMap]);
 
   const activeSession = useMemo(
     () => sessions.find((s) => s.id === activeSessionId),
     [sessions, activeSessionId]
+  );
+
+  const claimsTableRef = useScrollRetention<HTMLDivElement>(
+    !claimsLoading,
+    [claimsLoading, claims.length]
   );
 
   function handleFormChange<K extends keyof ClaimFormState>(
@@ -333,6 +362,15 @@ export function ClaimsPage() {
     value: ClaimFormState[K]
   ) {
     setForm((prev) => ({ ...prev, [key]: value }));
+  }
+
+  function handleItemSelect(nextId: string) {
+    setForm((prev) => ({
+      ...prev,
+      inventoryItemId: nextId,
+      variantId: undefined,
+    }));
+    setItemFieldError(null);
   }
 
   function getAvailableForSelectedItem():
@@ -360,13 +398,21 @@ export function ClaimsPage() {
     e.preventDefault();
     setFormError(null);
     setInfoMessage(null);
+    setItemFieldError(null);
 
     if (!activeSessionId) {
       setFormError("Please select a live session first.");
       return;
     }
     if (!form.inventoryItemId) {
-      setFormError("Please select an item.");
+      setItemFieldError("Piliin muna ang item bago mag-add ng claim.");
+      return;
+    }
+    const selectedItem = inventoryMap.get(form.inventoryItemId);
+    if (!selectedItem) {
+      setItemFieldError(
+        "Selected item is no longer available. Please choose another."
+      );
       return;
     }
     if (!form.temporaryName.trim()) {
@@ -380,7 +426,7 @@ export function ClaimsPage() {
       return;
     }
 
-    const item = inventoryMap.get(form.inventoryItemId);
+    const item = selectedItem;
     if (item?.variants?.length && !form.variantId) {
       setFormError("Select a variant for this item.");
       return;
@@ -409,6 +455,7 @@ export function ClaimsPage() {
       await refreshClaims(activeSessionId);
       await refreshInventory();
       setForm((prev) => ({ ...prev, quantity: "1", variantId: undefined }));
+      setItemFieldError(null);
 
       setInfoMessage(
         `Claim for ${claim.temporaryName} ACCEPTED and stock reserved.`
@@ -516,18 +563,6 @@ export function ClaimsPage() {
 
   return (
     <Page className="space-y-6">
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-        <div className="space-y-1">
-          <h1 className="text-xl font-semibold tracking-tight text-slate-900">
-            Claims
-          </h1>
-          <p className="text-sm text-slate-600">
-            Dito mo ita-type ang "mine" claims ng customers habang live.
-            Auto-accept / waitlist / reject based sa stock.
-          </p>
-        </div>
-      </div>
-
       {loading ? (
         <Card className="bg-slate-50">
           <CardContent className="py-3 text-xs text-slate-600">
@@ -540,7 +575,7 @@ export function ClaimsPage() {
       <Card>
         <CardContent className="space-y-3">
           <div className="flex flex-col gap-3 lg:flex-row lg:items-end">
-            <div className="flex-1 space-y-1">
+            <div className="flex-1 space-y-1" data-tour="claims-session">
               <label className={LABEL_CLASS}>Live session</label>
               <select
                 value={activeSessionId ?? ""}
@@ -562,7 +597,7 @@ export function ClaimsPage() {
               </select>
             </div>
 
-            <div className="flex flex-col gap-2 lg:items-end">
+            <div className="flex flex-col gap-2 lg:items-end" data-tour="claims-status">
               <div className="flex items-center justify-between gap-3">
                 <span className={LABEL_CLASS}>Status</span>
                 <label className="inline-flex items-center gap-2 text-xs font-medium text-slate-600">
@@ -616,7 +651,7 @@ export function ClaimsPage() {
       </Card>
 
       {activeSession ? (
-        <Card className="bg-slate-50">
+        <Card className="bg-slate-50" data-tour="claims-active-session">
           <CardContent className="py-3">
             <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-slate-600">
               <span>
@@ -642,7 +677,7 @@ export function ClaimsPage() {
       ) : null}
 
       {/* Manual claim entry */}
-      <Card>
+      <Card data-tour="claims-entry">
         <CardHeader>
           <div>
             <CardTitle>Manual claim entry</CardTitle>
@@ -667,27 +702,15 @@ export function ClaimsPage() {
 
               <div className="space-y-1 sm:col-span-2 lg:col-span-4">
                 <label className={LABEL_CLASS}>Item</label>
-                <input
-                  type="text"
-                  value={itemSearch}
-                  onChange={(e) => setItemSearch(e.target.value)}
-                  placeholder="Search by code/name (in-stock)"
-                  className={CONTROL_CLASS}
-                />
-                <select
+                <ItemSearchSelect
+                  items={claimItemOptions}
                   value={form.inventoryItemId}
-                  onChange={(e) =>
-                    handleFormChange("inventoryItemId", e.target.value)
-                  }
-                  className={CONTROL_CLASS}
-                >
-                  <option value="">Select item...</option>
-                  {filteredInventory.map((item) => (
-                    <option key={item.id} value={item.id}>
-                      {itemOptionLabel(item)}
-                    </option>
-                  ))}
-                </select>
+                  onChange={handleItemSelect}
+                  includeOutOfStock={includeOutOfStock}
+                  placeholder="Search by code/name"
+                  disabled={inventory.length === 0}
+                  error={itemFieldError}
+                />
               </div>
 
               <div className="space-y-1 sm:col-span-1 lg:col-span-2">
@@ -738,6 +761,7 @@ export function ClaimsPage() {
                   variant="primary"
                   disabled={!activeSessionId || inventory.length === 0}
                   className="w-full whitespace-nowrap lg:w-auto"
+                  data-tour="claims-add-button"
                 >
                   Add claim
                 </Button>
@@ -745,33 +769,53 @@ export function ClaimsPage() {
             </div>
 
             <div className="flex flex-col gap-1 text-xs text-slate-500">
-              {selectedItem ? (
-                <>
-                  <div>
-                    Total available{selectedHasVariants ? " (all variants)" : ""}:{" "}
-                    <span className="font-semibold tabular-nums text-slate-900">
-                      {selectedItemAvailable ?? 0}
-                    </span>
-                  </div>
-                  {selectedHasVariants ? (
-                    <div>
-                      {variantAvailable != null ? (
-                        <>
-                          Selected variant available:{" "}
-                          <span className="font-semibold tabular-nums text-slate-900">
-                            {variantAvailable}
-                          </span>
-                        </>
-                      ) : (
-                        "Select a variant to see its availability."
-                      )}
-                    </div>
-                  ) : null}
-                </>
-              ) : (
-                <div>Select an item to see available stock.</div>
-              )}
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <div>
+                  {selectedItem ? (
+                    <>
+                      Total available{selectedHasVariants ? " (all variants)" : ""}:{" "}
+                      <span className="font-semibold tabular-nums text-slate-900">
+                        {selectedItemAvailable ?? 0}
+                      </span>
+                    </>
+                  ) : (
+                    "Select an item to see available stock."
+                  )}
+                </div>
+                <label className="inline-flex items-center gap-2">
+                  <input
+                    type="checkbox"
+                    checked={includeOutOfStock}
+                    onChange={(e) => {
+                      setIncludeOutOfStock(e.target.checked);
+                      setItemFieldError(null);
+                    }}
+                    className={CHECKBOX_CLASS}
+                  />
+                  Include out-of-stock items
+                </label>
+              </div>
+              {selectedHasVariants ? (
+                <div>
+                  {variantAvailable != null ? (
+                    <>
+                      Selected variant available:{" "}
+                      <span className="font-semibold tabular-nums text-slate-900">
+                        {variantAvailable}
+                      </span>
+                    </>
+                  ) : (
+                    "Select a variant to see its availability."
+                  )}
+                </div>
+              ) : null}
             </div>
+
+            {itemFieldError ? (
+              <div className="rounded-md border border-rose-500/60 bg-rose-50 px-3 py-2 text-xs text-rose-700">
+                {itemFieldError}
+              </div>
+            ) : null}
 
             {formError ? (
               <div className="rounded-md border border-rose-500/60 bg-rose-50 px-3 py-2 text-xs text-rose-700">
@@ -795,7 +839,11 @@ export function ClaimsPage() {
       )}
 
       {/* Claims table */}
-      <div className={TABLE_WRAPPER_CLASS}>
+      <div
+        ref={claimsTableRef}
+        className={TABLE_WRAPPER_CLASS}
+        data-tour="claims-table"
+      >
         <table className="min-w-full text-left">
           <thead className={TABLE_HEAD_CLASS}>
             <tr>
@@ -805,7 +853,9 @@ export function ClaimsPage() {
               <th className="px-4 py-2">Variant</th>
               <th className="px-4 py-2 text-right">Qty</th>
               <th className="px-4 py-2 text-center">Status</th>
-              <th className="px-4 py-2 text-right">Actions</th>
+              <th className="px-4 py-2 text-right" data-tour="claims-actions">
+                Actions
+              </th>
             </tr>
           </thead>
           <tbody className="text-sm">
@@ -957,9 +1007,8 @@ export function ClaimsPage() {
                               </span>
                               <Button
                                 size="sm"
-                                variant="danger"
+                                variant="dangerSolid"
                                 onClick={() => void handleDeleteClaim(claim)}
-                                className="border-rose-600 bg-rose-600 text-white hover:border-rose-700 hover:bg-rose-700"
                               >
                                 Confirm
                               </Button>
@@ -1004,6 +1053,16 @@ export function ClaimsPage() {
           </div>
         </div>
       )}
+      <ClaimsHelpButton onClick={tutorial.open} />
+      <ClaimsTutorialOverlay
+        isOpen={tutorial.isOpen}
+        steps={tutorial.steps}
+        currentIndex={tutorial.currentStep}
+        onNext={tutorial.next}
+        onPrev={tutorial.prev}
+        onClose={tutorial.close}
+        onSkip={tutorial.skip}
+      />
     </Page>
   );
 }

@@ -43,4 +43,19 @@ db.version(1).stores({
   settings: "id",
 });
 
+// Keep version 2 aligned with version 1 to avoid downgrading existing databases.
+db.version(2).stores({
+  inventory: "id, itemCode, status",
+  liveSessions: "id, status, startTime",
+  liveSessionItems: "id, liveSessionId, inventoryItemId, displayOrder",
+  claims: "id, liveSessionId, inventoryItemId, customerId, timestamp, status",
+  orders: "id, liveSessionId, customerId, status, paymentStatus, orderNumber",
+  orderLines: "id, orderId, inventoryItemId",
+  customers: "id, displayName, realName, phone",
+  payments: "id, orderId, date, method",
+  shipments: "id, orderId, status, courier, trackingNumber",
+  promoRules: "id, type, isActive",
+  settings: "id",
+});
+
 export { db };

@@ -242,17 +242,8 @@ export function FinancePage() {
 
   return (
     <Page className="space-y-6">
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div className="space-y-1">
-          <h1 className="text-xl font-semibold tracking-tight text-slate-900">
-            Finance
-          </h1>
-          <p className="text-sm text-slate-600">
-            Kita, gastos, at tubo per period. Based on orders, payments, and
-            shipments from your live sessions.
-          </p>
-        </div>
-        {snapshot ? (
+      {snapshot ? (
+        <div className="flex justify-end">
           <Card>
             <CardContent className="py-3">
               <div className="flex items-center gap-4 text-xs text-slate-600">
@@ -276,8 +267,8 @@ export function FinancePage() {
               </div>
             </CardContent>
           </Card>
-        ) : null}
-      </div>
+        </div>
+      ) : null}
 
       {/* Filters */}
       <Card>

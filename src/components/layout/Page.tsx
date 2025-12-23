@@ -7,10 +7,9 @@ function cn(...classes: Array<string | false | null | undefined>) {
 export type PageProps = React.HTMLAttributes<HTMLDivElement>;
 
 /**
- * Page wrapper for content inside MainLayout's `max-w-6xl px-6` container.
- * Uses negative margins so small screens can use `px-4` while keeping `px-6` on larger screens.
+ * Page wrapper for module content.
+ * MainLayout now owns the global padding, so pages can be full width.
  */
 export function Page({ className, ...props }: PageProps) {
-  return <div className={cn("-mx-6 px-4 sm:px-6", className)} {...props} />;
+  return <div className={cn("w-full", className)} {...props} />;
 }
-

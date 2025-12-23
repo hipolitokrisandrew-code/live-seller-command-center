@@ -3,6 +3,10 @@ import { db } from "../core/db";
 import type { Claim } from "../core/types";
 import { ensureAppSettings } from "./settings.service";
 import { adjustStock, getInventoryItem } from "./inventory.service";
+import {
+  removeOrderLinesForClaim,
+  syncUnpaidOrdersForSession,
+} from "./orders.service";
 
 const nowIso = () => new Date().toISOString();
 
@@ -187,6 +191,11 @@ export async function updateClaimStatus(
   };
 
   await db.claims.put(updated);
+  if (existing.status === "ACCEPTED" && newStatus !== "ACCEPTED") {
+    // If an accepted claim is cancelled/rejected/changed, remove its order line
+    // only when the linked order is still UNPAID.
+    await removeOrderLinesForClaim(existing.id);
+  }
   return updated;
 }
 
@@ -195,7 +204,13 @@ export async function updateClaimStatus(
  * Useful for hiding/culling cancelled/joy-reserve claims from the list.
  */
 export async function deleteClaim(claimId: string): Promise<void> {
+  const existing = await db.claims.get(claimId);
+  // Keep unpaid orders in sync by removing any order line tied to this claim.
+  await removeOrderLinesForClaim(claimId);
   await db.claims.delete(claimId);
+  if (existing?.liveSessionId) {
+    await syncUnpaidOrdersForSession(existing.liveSessionId);
+  }
 }
 
 /**
