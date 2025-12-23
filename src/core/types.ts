@@ -5,6 +5,7 @@ export interface InventoryVariant {
   id: string;
   label: string;
   stock: number;
+  reservedStock?: number;
   costPrice?: number;
   sellingPrice?: number;
 }
@@ -207,6 +208,10 @@ export interface AppSettings {
   maxReservationsMinutes: number;
   defaultShippingFee: number;
   defaultCodFeePercent: number;
+  taxIncludedEnabled: boolean;
+  taxIncludedRatePct: number;
+  shippingTaxable: boolean;
+  codTaxable: boolean;
   currency: "PHP"; // fixed
 }
 

@@ -3,14 +3,57 @@ import {
   getAppSettings,
   updateAppSettings,
 } from "../services/settings.service";
-import { CARD_CLASS, INPUT_CLASS, CHECKBOX_CLASS } from "../theme/classes";
+import { Page } from "../components/layout/Page";
+import { Button } from "../components/ui/Button";
+import {
+  Card,
+  CardContent,
+  CardHeader,
+  CardHint,
+  CardTitle,
+} from "../components/ui/Card";
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type SettingsFormState = any;
 
-const LABEL_CLASS =
-  "mb-1 block text-[11px] font-semibold uppercase tracking-wide text-slate-600";
+const LABEL_CLASS = "text-xs font-medium text-slate-600";
+const CONTROL_CLASS =
+  "h-9 w-full rounded-md border border-slate-200 bg-white px-3 text-sm text-slate-900 shadow-sm focus:border-emerald-500 focus:outline-none focus:ring-2 focus:ring-emerald-500/30";
+const CHECKBOX_CLASS =
+  "h-4 w-4 rounded border-slate-300 text-emerald-600 focus:ring-emerald-500";
 const CHECKBOX_LABEL_CLASS = "text-xs text-slate-700";
+
+function getInitials(value: string): string {
+  const cleaned = value.trim();
+  if (!cleaned) return "";
+  const parts = cleaned.split(/\s+/).filter(Boolean);
+  const first = parts[0]?.[0] ?? "";
+  const second = parts[1]?.[0] ?? "";
+  return `${first}${second}`.toUpperCase();
+}
+
+function fileToDataUrl(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result));
+    reader.onerror = () => reject(reader.error);
+    reader.readAsDataURL(file);
+  });
+}
+
+function getVatRateError(value: unknown): string | null {
+  if (value === "" || value == null) {
+    return "VAT rate is required.";
+  }
+  const num = Number(value);
+  if (!Number.isFinite(num)) {
+    return "VAT rate must be a valid number.";
+  }
+  if (num < 0 || num > 30) {
+    return "VAT rate must be between 0 and 30%.";
+  }
+  return null;
+}
 
 export function SettingsPage() {
   const [form, setForm] = useState<SettingsFormState | null>(null);
@@ -18,6 +61,7 @@ export function SettingsPage() {
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const vatRateError = form ? getVatRateError(form.taxIncludedRatePct) : null;
 
   useEffect(() => {
     let cancelled = false;
@@ -66,6 +110,21 @@ export function SettingsPage() {
     );
   }
 
+  async function handleLogoFileChange(file: File | null) {
+    if (!form) return;
+    if (!file) {
+      setForm((prev) => (prev ? { ...prev, logoUrl: "" } : prev));
+      return;
+    }
+    try {
+      const dataUrl = await fileToDataUrl(file);
+      setForm((prev) => (prev ? { ...prev, logoUrl: dataUrl } : prev));
+    } catch (err) {
+      console.error(err);
+      setError("Failed to load logo image.");
+    }
+  }
+
   async function handleSubmit(e: FormEvent) {
     e.preventDefault();
     if (!form) return;
@@ -75,6 +134,10 @@ export function SettingsPage() {
     setMessage(null);
 
     try {
+      const rateError = getVatRateError(form.taxIncludedRatePct);
+      if (rateError) {
+        return;
+      }
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       await updateAppSettings(form as any);
       setMessage("Settings saved successfully.");
@@ -88,289 +151,446 @@ export function SettingsPage() {
 
   if (loading) {
     return (
-      <div className="space-y-4">
-        <h1 className="text-2xl font-semibold text-slate-900">
-          Settings
-        </h1>
-        <div className={CARD_CLASS}>
-          <p className="text-sm text-slate-600">Loading settings...</p>
+      <Page className="space-y-6">
+        <div className="space-y-1">
+          <h1 className="text-xl font-semibold tracking-tight text-slate-900">
+            Settings
+          </h1>
         </div>
-      </div>
+        <Card className="bg-slate-50">
+          <CardContent className="py-3 text-xs text-slate-600">
+            Loading settings...
+          </CardContent>
+        </Card>
+      </Page>
     );
   }
 
   if (!form) {
     return (
-      <div className={CARD_CLASS}>
-        <p className="text-sm text-red-600">
-          Unable to load settings. Please refresh the page.
-        </p>
-      </div>
+      <Page className="space-y-6">
+        <div className="space-y-1">
+          <h1 className="text-xl font-semibold tracking-tight text-slate-900">
+            Settings
+          </h1>
+        </div>
+        <Card>
+          <CardContent className="py-3 text-sm text-rose-700">
+            Unable to load settings. Please refresh the page.
+          </CardContent>
+        </Card>
+      </Page>
     );
   }
 
   return (
-    <div className="space-y-4">
-      <header className="mb-2">
-        <h1 className="text-2xl font-semibold text-slate-900">
+    <Page className="space-y-6">
+      <div className="space-y-1">
+        <h1 className="text-xl font-semibold tracking-tight text-slate-900">
           Settings
         </h1>
-        <p className="mt-1 text-sm text-slate-600">
+        <p className="text-sm text-slate-600">
           Global preferences that affect Inventory, Live Sessions, Orders,
           Customers, Payments, and Finance.
         </p>
-      </header>
+      </div>
 
-      <form onSubmit={handleSubmit} className="space-y-4">
+      <form onSubmit={handleSubmit} className="space-y-6">
         {/* Appearance (informational) */}
-        <section className={CARD_CLASS}>
-          <header>
-            <h2 className="text-sm font-semibold text-slate-900">Appearance</h2>
-            <p className="mt-1 text-xs text-slate-600">
+        <Card>
+          <CardHeader className="items-start border-b-0">
+            <CardTitle>Appearance</CardTitle>
+            <CardHint>
               The system uses a fixed Light theme for clarity and consistency.
-            </p>
-          </header>
-        </section>
+            </CardHint>
+          </CardHeader>
+        </Card>
 
         {/* Profile & Business */}
-        <section className={CARD_CLASS}>
-          <header>
-            <h2 className="text-sm font-semibold text-slate-900">
-              Profile &amp; Business
-            </h2>
-            <p className="mt-1 text-xs text-slate-600">
-              Used across the app (sidebar, Finance header, future exports).
-            </p>
-          </header>
-
-          <div className="mt-4 grid gap-4 md:grid-cols-2">
+        <Card>
+          <CardHeader className="items-start">
             <div>
-              <label className={LABEL_CLASS}>Business name</label>
-              <input
-                type="text"
-                name="businessName"
-                className={INPUT_CLASS}
-                value={form.businessName ?? ""}
-                onChange={handleInputChange}
-                placeholder="Maria's Closet Live"
-              />
+              <CardTitle>Profile &amp; Business</CardTitle>
+              <CardHint>
+                Used across the app (sidebar, Finance header, future exports).
+              </CardHint>
             </div>
+          </CardHeader>
+          <CardContent>
+            <div className="grid gap-4 md:grid-cols-2">
+              <div className="space-y-1">
+                <label className={LABEL_CLASS}>Business name</label>
+                <input
+                  type="text"
+                  name="businessName"
+                  className={CONTROL_CLASS}
+                  value={form.businessName ?? ""}
+                  onChange={handleInputChange}
+                  placeholder="Maria's Closet Live"
+                />
+              </div>
 
-            <div>
-              <label className={LABEL_CLASS}>Owner / User name</label>
-              <input
-                type="text"
-                name="ownerName"
-                className={INPUT_CLASS}
-                value={form.ownerName ?? ""}
-                onChange={handleInputChange}
-                placeholder="Maria Espinosa"
-              />
-            </div>
+              <div className="space-y-1">
+                <label className={LABEL_CLASS}>Owner / User name</label>
+                <input
+                  type="text"
+                  name="ownerName"
+                  className={CONTROL_CLASS}
+                  value={form.ownerName ?? ""}
+                  onChange={handleInputChange}
+                  placeholder="Maria Espinosa"
+                />
+              </div>
 
-            <div>
-              <label className={LABEL_CLASS}>Contact email (optional)</label>
-              <input
-                type="email"
-                name="contactEmail"
-                className={INPUT_CLASS}
-                value={form.contactEmail ?? ""}
-                onChange={handleInputChange}
-                placeholder="liveseller@example.com"
-              />
-            </div>
+              <div className="space-y-1">
+                <label className={LABEL_CLASS}>Contact email (optional)</label>
+                <input
+                  type="email"
+                  name="contactEmail"
+                  className={CONTROL_CLASS}
+                  value={form.contactEmail ?? ""}
+                  onChange={handleInputChange}
+                  placeholder="liveseller@example.com"
+                />
+              </div>
 
-            <div>
-              <label className={LABEL_CLASS}>Contact phone (optional)</label>
-              <input
-                type="tel"
-                name="contactPhone"
-                className={INPUT_CLASS}
-                value={form.contactPhone ?? ""}
-                onChange={handleInputChange}
-                placeholder="09XX-XXX-XXXX"
-              />
+              <div className="space-y-1">
+                <label className={LABEL_CLASS}>Contact phone (optional)</label>
+                <input
+                  type="tel"
+                  name="contactPhone"
+                  className={CONTROL_CLASS}
+                  value={form.contactPhone ?? ""}
+                  onChange={handleInputChange}
+                  placeholder="09XX-XXX-XXXX"
+                />
+              </div>
+
+              <div className="space-y-2 md:col-span-2">
+                <label className={LABEL_CLASS}>Logo image</label>
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+                  <div className="flex h-8 w-8 items-center justify-center overflow-hidden rounded-full bg-emerald-500 text-xs font-bold text-slate-950">
+                    {form.logoUrl ? (
+                      <img
+                        src={form.logoUrl}
+                        alt="Business logo preview"
+                        className="h-full w-full object-cover"
+                      />
+                    ) : (
+                      getInitials(form.businessName ?? "") || "LS"
+                    )}
+                  </div>
+                  <input
+                    type="file"
+                    accept="image/*"
+                    className={CONTROL_CLASS}
+                    onChange={(e) =>
+                      void handleLogoFileChange(e.target.files?.[0] ?? null)
+                    }
+                  />
+                  {form.logoUrl ? (
+                    <Button
+                      size="sm"
+                      variant="secondary"
+                      onClick={() => void handleLogoFileChange(null)}
+                      className="sm:w-auto"
+                    >
+                      Remove
+                    </Button>
+                  ) : null}
+                </div>
+                <p className="text-xs text-slate-500">
+                  Upload a square image for best results.
+                </p>
+              </div>
             </div>
-          </div>
-        </section>
+          </CardContent>
+        </Card>
+
+        {/* Invoice template */}
+        <Card>
+          <CardHeader className="items-start">
+            <div>
+              <CardTitle>Invoice template</CardTitle>
+              <CardHint>Choose a layout for invoice PDF receipts.</CardHint>
+            </div>
+          </CardHeader>
+          <CardContent>
+            <div className="grid gap-3 md:grid-cols-2">
+              <div className="space-y-1">
+                <label className={LABEL_CLASS}>Template style</label>
+                <select
+                  name="invoiceTemplate"
+                  className={CONTROL_CLASS}
+                  value={form.invoiceTemplate ?? "EMERALD"}
+                  onChange={handleInputChange}
+                >
+                  <option value="CLASSIC">Classic</option>
+                  <option value="MODERN">Modern</option>
+                  <option value="MINIMAL">Minimal</option>
+                  <option value="EMERALD">Emerald</option>
+                  <option value="NOIR">Noir</option>
+                </select>
+              </div>
+              <div className="text-xs text-slate-500">
+                The invoice PDF uses your logo, business name, contact email,
+                and phone.
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Taxes (VAT) */}
+        <Card id="taxes">
+          <CardHeader className="items-start">
+            <div>
+              <CardTitle>Taxes (VAT)</CardTitle>
+              <CardHint>
+                Configure VAT-inclusive breakdowns shown in Orders and invoices.
+              </CardHint>
+            </div>
+          </CardHeader>
+          <CardContent>
+            <div className="grid gap-4 md:grid-cols-2">
+              <label className="flex items-center gap-2">
+                <input
+                  type="checkbox"
+                  name="taxIncludedEnabled"
+                  className={CHECKBOX_CLASS}
+                  checked={Boolean(form.taxIncludedEnabled)}
+                  onChange={handleInputChange}
+                />
+                <span className={CHECKBOX_LABEL_CLASS}>
+                  Enable VAT (included)
+                </span>
+              </label>
+
+              <div className="space-y-1">
+                <label className={LABEL_CLASS}>VAT rate (%)</label>
+                <input
+                  type="number"
+                  name="taxIncludedRatePct"
+                  className={CONTROL_CLASS}
+                  value={form.taxIncludedRatePct ?? ""}
+                  onChange={handleInputChange}
+                  min={0}
+                  max={30}
+                  step="0.01"
+                />
+                {vatRateError ? (
+                  <div className="text-xs text-rose-600">{vatRateError}</div>
+                ) : null}
+              </div>
+
+              <label className="flex items-center gap-2">
+                <input
+                  type="checkbox"
+                  name="shippingTaxable"
+                  className={CHECKBOX_CLASS}
+                  checked={Boolean(form.shippingTaxable)}
+                  onChange={handleInputChange}
+                />
+                <span className={CHECKBOX_LABEL_CLASS}>
+                  Shipping is VAT taxable
+                </span>
+              </label>
+
+              <label className="flex items-center gap-2">
+                <input
+                  type="checkbox"
+                  name="codTaxable"
+                  className={CHECKBOX_CLASS}
+                  checked={Boolean(form.codTaxable)}
+                  onChange={handleInputChange}
+                />
+                <span className={CHECKBOX_LABEL_CLASS}>
+                  COD fee is VAT taxable
+                </span>
+              </label>
+            </div>
+          </CardContent>
+        </Card>
 
         {/* Defaults & Behavior */}
-        <section className={CARD_CLASS}>
-          <header>
-            <h2 className="text-sm font-semibold text-slate-900">
-              Defaults &amp; Behavior
-            </h2>
-            <p className="mt-1 text-xs text-slate-600">
-              These defaults affect new Inventory items, Live Sessions, Orders,
-              and Finance calculations.
-            </p>
-          </header>
-
-          <div className="mt-4 grid gap-4 md:grid-cols-3">
+        <Card>
+          <CardHeader className="items-start">
             <div>
-              <label className={LABEL_CLASS}>Default platform</label>
-              <select
-                name="defaultPlatform"
-                className={INPUT_CLASS}
-                value={form.defaultPlatform ?? ""}
-                onChange={handleInputChange}
-              >
-                <option value="">None</option>
-                <option value="facebook">Facebook Live</option>
-                <option value="tiktok">TikTok Live</option>
-                <option value="shopee">Shopee Live</option>
-                <option value="instagram">IG Live</option>
-              </select>
+              <CardTitle>Defaults &amp; Behavior</CardTitle>
+              <CardHint>
+                These defaults affect new Inventory items, Live Sessions, Orders,
+                and Finance calculations.
+              </CardHint>
             </div>
+          </CardHeader>
+          <CardContent>
+            <div className="grid gap-4 md:grid-cols-3">
+              <div className="space-y-1">
+                <label className={LABEL_CLASS}>Default platform</label>
+                <select
+                  name="defaultPlatform"
+                  className={CONTROL_CLASS}
+                  value={form.defaultPlatform ?? ""}
+                  onChange={handleInputChange}
+                >
+                  <option value="">None</option>
+                  <option value="facebook">Facebook Live</option>
+                  <option value="tiktok">TikTok Live</option>
+                  <option value="shopee">Shopee Live</option>
+                  <option value="instagram">IG Live</option>
+                </select>
+              </div>
 
-            <div>
-              <label className={LABEL_CLASS}>Default payment method</label>
-              <select
-                name="defaultPaymentMethod"
-                className={INPUT_CLASS}
-                value={form.defaultPaymentMethod ?? ""}
-                onChange={handleInputChange}
-              >
-                <option value="">None</option>
-                <option value="gcash">GCash</option>
-                <option value="bank-transfer">Bank transfer</option>
-                <option value="cod">COD</option>
-              </select>
-            </div>
+              <div className="space-y-1">
+                <label className={LABEL_CLASS}>Default payment method</label>
+                <select
+                  name="defaultPaymentMethod"
+                  className={CONTROL_CLASS}
+                  value={form.defaultPaymentMethod ?? ""}
+                  onChange={handleInputChange}
+                >
+                  <option value="">None</option>
+                  <option value="gcash">GCash</option>
+                  <option value="bank-transfer">Bank transfer</option>
+                  <option value="cod">COD</option>
+                </select>
+              </div>
 
-            <div>
-              <label className={LABEL_CLASS}>Low stock threshold (qty)</label>
-              <input
-                type="number"
-                name="lowStockThreshold"
-                className={INPUT_CLASS}
-                value={form.lowStockThreshold ?? 0}
-                onChange={handleInputChange}
-                min={0}
-              />
-            </div>
+              <div className="space-y-1">
+                <label className={LABEL_CLASS}>Low stock threshold (qty)</label>
+                <input
+                  type="number"
+                  name="lowStockThreshold"
+                  className={CONTROL_CLASS}
+                  value={form.lowStockThreshold ?? 0}
+                  onChange={handleInputChange}
+                  min={0}
+                />
+              </div>
 
-            <div>
-              <label className={LABEL_CLASS}>Default shipping fee (PHP)</label>
-              <input
-                type="number"
-                name="defaultShippingFee"
-                className={INPUT_CLASS}
-                value={form.defaultShippingFee ?? 0}
-                onChange={handleInputChange}
-                min={0}
-              />
-            </div>
+              <div className="space-y-1">
+                <label className={LABEL_CLASS}>Default shipping fee (PHP)</label>
+                <input
+                  type="number"
+                  name="defaultShippingFee"
+                  className={CONTROL_CLASS}
+                  value={form.defaultShippingFee ?? 0}
+                  onChange={handleInputChange}
+                  min={0}
+                />
+              </div>
 
-            <div>
-              <label className={LABEL_CLASS}>Default COD fee (%)</label>
-              <input
-                type="number"
-                name="defaultCodFee"
-                className={INPUT_CLASS}
-                value={form.defaultCodFee ?? 0}
-                onChange={handleInputChange}
-                min={0}
-              />
-            </div>
+              <div className="space-y-1">
+                <label className={LABEL_CLASS}>Default COD fee (%)</label>
+                <input
+                  type="number"
+                  name="defaultCodFee"
+                  className={CONTROL_CLASS}
+                  value={form.defaultCodFee ?? 0}
+                  onChange={handleInputChange}
+                  min={0}
+                />
+              </div>
 
-            <div className="flex items-center gap-2 pt-5">
-              <input
-                id="showSupplierCost"
-                type="checkbox"
-                name="showSupplierCost"
-                className={CHECKBOX_CLASS}
-                checked={Boolean(form.showSupplierCost)}
-                onChange={handleInputChange}
-              />
-              <label htmlFor="showSupplierCost" className={CHECKBOX_LABEL_CLASS}>
-                Show supplier cost in Inventory list
-              </label>
+              <div className="flex items-center gap-2 pt-6">
+                <input
+                  id="showSupplierCost"
+                  type="checkbox"
+                  name="showSupplierCost"
+                  className={CHECKBOX_CLASS}
+                  checked={Boolean(form.showSupplierCost)}
+                  onChange={handleInputChange}
+                />
+                <label htmlFor="showSupplierCost" className={CHECKBOX_LABEL_CLASS}>
+                  Show supplier cost in Inventory list
+                </label>
+              </div>
             </div>
-          </div>
-        </section>
+          </CardContent>
+        </Card>
 
         {/* Date / Time & Notifications */}
-        <section className={CARD_CLASS}>
-          <header>
-            <h2 className="text-sm font-semibold text-slate-900">
-              Date / Time &amp; Notifications
-            </h2>
-            <p className="mt-1 text-xs text-slate-600">
-              Controls how dates are displayed and how notifications behave.
-            </p>
-          </header>
-
-          <div className="mt-4 grid gap-4 md:grid-cols-3">
+        <Card>
+          <CardHeader className="items-start">
             <div>
-              <label className={LABEL_CLASS}>Date format</label>
-              <select
-                name="dateFormat"
-                className={INPUT_CLASS}
-                value={form.dateFormat ?? "DD/MM/YYYY"}
-                onChange={handleInputChange}
-              >
-                <option value="DD/MM/YYYY">DD/MM/YYYY</option>
-                <option value="MM/DD/YYYY">MM/DD/YYYY</option>
-                <option value="YYYY-MM-DD">YYYY-MM-DD</option>
-              </select>
+              <CardTitle>Date / Time &amp; Notifications</CardTitle>
+              <CardHint>
+                Controls how dates are displayed and how notifications behave.
+              </CardHint>
             </div>
-
-            <div>
-              <label className={LABEL_CLASS}>Time format</label>
-              <select
-                name="timeFormat"
-                className={INPUT_CLASS}
-                value={form.timeFormat ?? "24-hour"}
-                onChange={handleInputChange}
-              >
-                <option value="24-hour">24-hour</option>
-                <option value="12-hour">12-hour</option>
-              </select>
-            </div>
-
-            <div className="flex flex-col justify-center gap-2 pt-1">
-              <label className="flex items-center gap-2 text-xs text-slate-700">
-                <input
-                  type="checkbox"
-                  name="enableSoundNotifications"
-                  className={CHECKBOX_CLASS}
-                  checked={Boolean(form.enableSoundNotifications)}
+          </CardHeader>
+          <CardContent>
+            <div className="grid gap-4 md:grid-cols-3">
+              <div className="space-y-1">
+                <label className={LABEL_CLASS}>Date format</label>
+                <select
+                  name="dateFormat"
+                  className={CONTROL_CLASS}
+                  value={form.dateFormat ?? "DD/MM/YYYY"}
                   onChange={handleInputChange}
-                />
-                Enable sound notifications (e.g., for new claims / orders)
-              </label>
+                >
+                  <option value="DD/MM/YYYY">DD/MM/YYYY</option>
+                  <option value="MM/DD/YYYY">MM/DD/YYYY</option>
+                  <option value="YYYY-MM-DD">YYYY-MM-DD</option>
+                </select>
+              </div>
 
-              <label className="flex items-center gap-2 text-xs text-slate-700">
-                <input
-                  type="checkbox"
-                  name="enableDesktopNotifications"
-                  className={CHECKBOX_CLASS}
-                  checked={Boolean(form.enableDesktopNotifications)}
+              <div className="space-y-1">
+                <label className={LABEL_CLASS}>Time format</label>
+                <select
+                  name="timeFormat"
+                  className={CONTROL_CLASS}
+                  value={form.timeFormat ?? "24-hour"}
                   onChange={handleInputChange}
-                />
-                Enable desktop notifications (browser permission required)
-              </label>
+                >
+                  <option value="24-hour">24-hour</option>
+                  <option value="12-hour">12-hour</option>
+                </select>
+              </div>
+
+              <div className="flex flex-col justify-center gap-2 pt-1">
+                <label className="flex items-center gap-2 text-xs text-slate-700">
+                  <input
+                    type="checkbox"
+                    name="enableSoundNotifications"
+                    className={CHECKBOX_CLASS}
+                    checked={Boolean(form.enableSoundNotifications)}
+                    onChange={handleInputChange}
+                  />
+                  Enable sound notifications (e.g., for new claims / orders)
+                </label>
+
+                <label className="flex items-center gap-2 text-xs text-slate-700">
+                  <input
+                    type="checkbox"
+                    name="enableDesktopNotifications"
+                    className={CHECKBOX_CLASS}
+                    checked={Boolean(form.enableDesktopNotifications)}
+                    onChange={handleInputChange}
+                  />
+                  Enable desktop notifications (browser permission required)
+                </label>
+              </div>
             </div>
-          </div>
-        </section>
+          </CardContent>
+        </Card>
 
         {/* Footer actions */}
-        <div className="flex items-center justify-between">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div className="space-y-1 text-xs">
-            {error && <p className="text-red-600">{error}</p>}
+            {error && <p className="text-rose-600">{error}</p>}
             {message && !error && <p className="text-emerald-600">{message}</p>}
           </div>
 
-          <button
+          <Button
             type="submit"
+            variant="primary"
             disabled={saving}
-            className="inline-flex items-center rounded-md bg-emerald-500 px-4 py-2 text-sm font-semibold text-slate-950 shadow-sm hover:bg-emerald-600 disabled:cursor-not-allowed disabled:opacity-70"
+            className="w-full sm:w-auto"
           >
             {saving ? "Saving..." : "Save settings"}
-          </button>
+          </Button>
         </div>
       </form>
-    </div>
+    </Page>
   );
 }

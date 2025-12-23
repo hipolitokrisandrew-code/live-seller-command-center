@@ -2,7 +2,7 @@
 import { db } from "../core/db";
 import type { Claim } from "../core/types";
 import { ensureAppSettings } from "./settings.service";
-import { adjustStock } from "./inventory.service";
+import { adjustStock, getInventoryItem } from "./inventory.service";
 
 const nowIso = () => new Date().toISOString();
 
@@ -39,14 +39,17 @@ async function getAvailableStock(
   inventoryItemId: string,
   variantId?: string
 ): Promise<{ available: number; current: number; reserved: number }> {
-  const item = await db.inventory.get(inventoryItemId);
+  const item = await getInventoryItem(inventoryItemId);
   if (!item) {
     throw new Error("Inventory item not found");
   }
   let available = Math.max(0, item.currentStock - item.reservedStock);
   if (variantId && item.variants?.length) {
     const variant = item.variants.find((v) => v.id === variantId);
-    if (variant) available = variant.stock;
+    if (variant) {
+      const reserved = variant.reservedStock ?? 0;
+      available = Math.max(0, variant.stock - reserved);
+    }
   }
   return {
     available,
@@ -58,7 +61,7 @@ async function getAvailableStock(
 /**
  * Create a claim and apply stock-reservation logic:
  *
- *  - available = currentStock - reservedStock
+ *  - available = currentStock - reservedStock (or per-variant if variantId)
  *  - If available >= quantity -> ACCEPTED, reservedStock + quantity
  *  - Else if autoWaitlist -> WAITLIST (no stock change)
  *  - Else -> REJECTED (no stock change)
@@ -77,14 +80,13 @@ export async function createClaim(input: CreateClaimInput): Promise<Claim> {
     input.variantId
   );
 
-  let status: Claim["status"];
-  let reason: string | undefined = undefined;
+  const status: Claim["status"] = "ACCEPTED";
+  const reason: string | undefined = undefined;
 
   if (available < input.quantity) {
     throw new Error("Not enough stock available for this item.");
   }
 
-  status = "ACCEPTED";
   // reserve stock
   await adjustStock(input.inventoryItemId, {
     reservedDelta: input.quantity,

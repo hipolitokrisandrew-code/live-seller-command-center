@@ -19,6 +19,15 @@ const NAV_ITEMS: NavItem[] = [
   { to: "/settings", label: "Settings" },
 ];
 
+function getInitials(value: string): string {
+  const cleaned = value.trim();
+  if (!cleaned) return "";
+  const parts = cleaned.split(/\s+/).filter(Boolean);
+  const first = parts[0]?.[0] ?? "";
+  const second = parts[1]?.[0] ?? "";
+  return `${first}${second}`.toUpperCase();
+}
+
 export default function MainLayout() {
   const { settings } = useAppSettings();
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
@@ -26,6 +35,8 @@ export default function MainLayout() {
   const businessName =
     settings?.businessName?.trim() || "Live Seller Command Center";
   const ownerName = settings?.ownerName?.trim() || "Owner name not set";
+  const logoUrl = settings?.logoUrl?.trim() || "";
+  const displayLogoText = getInitials(businessName) || "LS";
 
   return (
     <div className="min-h-screen bg-slate-50 text-slate-900">
@@ -41,8 +52,16 @@ export default function MainLayout() {
           {isSidebarOpen ? (
             <div className="flex items-center justify-between gap-3 border-b border-slate-200 px-4 py-4">
               <div className="flex items-center gap-3">
-                <div className="flex h-9 w-9 items-center justify-center rounded-full bg-emerald-500 text-sm font-bold text-slate-950">
-                  LS
+                <div className="flex h-8 w-8 items-center justify-center overflow-hidden rounded-full bg-emerald-500 text-xs font-bold text-slate-950">
+                  {logoUrl ? (
+                    <img
+                      src={logoUrl}
+                      alt={`${businessName} logo`}
+                      className="h-full w-full object-cover"
+                    />
+                  ) : (
+                    displayLogoText
+                  )}
                 </div>
                 <div className="flex flex-col">
                   <span className="text-[11px] font-medium uppercase tracking-[0.16em] text-slate-500">

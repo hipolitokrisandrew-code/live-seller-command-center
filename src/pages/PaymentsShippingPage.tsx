@@ -3,14 +3,29 @@ import type { FormEvent } from "react";
 import { useEffect, useMemo, useState } from "react";
 import type { Order, Payment, Shipment } from "../core/types";
 import { useOrderPaymentsAndShipping } from "../hooks/useOrderPaymentsAndShipping";
-import { INPUT_CLASS, MUTED_PANEL_CLASS, PANEL_CLASS } from "../theme/classes";
+import { Page } from "../components/layout/Page";
+import { Badge } from "../components/ui/Badge";
+import { Button } from "../components/ui/Button";
+import {
+  Card,
+  CardContent,
+  CardHeader,
+  CardTitle,
+} from "../components/ui/Card";
 
 // Combined Payments + Shipping workspace.
 // Routing: add Route path="payments-shipping" to App.tsx and point the sidebar there (see MainLayout).
 // Logic reuse: all actions call existing payments/shipments/orders services via useOrderPaymentsAndShipping hook.
 
+function cn(...classes: Array<string | false | null | undefined>) {
+  return classes.filter(Boolean).join(" ");
+}
+
 const TABLE_HEAD_CLASS =
-  "border-b border-slate-200 bg-slate-50 text-xs uppercase text-slate-600";
+  "border-b border-slate-200 bg-slate-50 text-xs uppercase tracking-wide text-slate-500";
+
+const CONTROL_CLASS =
+  "h-9 w-full rounded-md border border-slate-200 bg-white px-3 text-sm text-slate-900 shadow-sm focus:border-emerald-500 focus:outline-none focus:ring-2 focus:ring-emerald-500/30";
 
 function formatCurrency(value: number | undefined | null): string {
   const num = Number.isFinite(value as number) ? (value as number) : 0;
@@ -46,6 +61,46 @@ function formatCustomerLabel(
   const clean = id.trim();
   if (clean.length <= 10) return clean;
   return `${clean.slice(0, 6)}...${clean.slice(-4)}`;
+}
+
+function orderPaymentBadgeVariant(
+  status: Order["paymentStatus"],
+): "success" | "warning" | "danger" {
+  switch (status) {
+    case "PAID":
+      return "success";
+    case "PARTIAL":
+      return "warning";
+    case "UNPAID":
+    default:
+      return "danger";
+  }
+}
+
+function orderStatusBadgeVariant(
+  status: Order["status"],
+): "neutral" | "success" | "warning" | "danger" {
+  switch (status) {
+    case "DELIVERED":
+      return "success";
+    case "SHIPPED":
+    case "PACKING":
+      return "warning";
+    case "PENDING_PAYMENT":
+    case "PARTIALLY_PAID":
+      return "danger";
+    case "PAID":
+    default:
+      return "neutral";
+  }
+}
+
+function paymentRecordBadgeVariant(
+  status: Payment["status"],
+): "neutral" | "success" | "danger" {
+  if (status === "VOIDED") return "danger";
+  if (status === "POSTED") return "success";
+  return "neutral";
 }
 
 export function PaymentsShippingPage() {
@@ -288,9 +343,9 @@ export function PaymentsShippingPage() {
     await quickUpdateShipmentStatus(status);
   }
   return (
-    <div className="space-y-4">
-      <div>
-        <h1 className="text-2xl font-semibold text-slate-900">
+    <Page className="space-y-6">
+      <div className="space-y-1">
+        <h1 className="text-xl font-semibold tracking-tight text-slate-900">
           Payments &amp; Shipping
         </h1>
         <p className="text-sm text-slate-600">
@@ -299,113 +354,138 @@ export function PaymentsShippingPage() {
         </p>
       </div>
 
-      <div
-        className={`${PANEL_CLASS} grid gap-3 p-3 text-sm lg:grid-cols-[minmax(0,1.3fr)_minmax(0,1fr)]`}
-      >
-        <div className="flex flex-col gap-2">
-          <label className="text-xs font-semibold uppercase tracking-wide text-slate-600">
-            Live session
-          </label>
-          <select
-            value={activeSessionId ?? ""}
-            onChange={(e) =>
-              setActiveSessionId(e.target.value ? e.target.value : undefined)
-            }
-            className={INPUT_CLASS}
-          >
-            {sessions.length === 0 && <option value="">No sessions yet</option>}
-            {sessions.length > 0 && activeSessionId == null && (
-              <option value="">Select session...</option>
-            )}
-            {sessions.map((s) => (
-              <option key={s.id} value={s.id}>
-                {s.title} ({s.platform})
-              </option>
-            ))}
-          </select>
-          {activeSession && (
-            <p className="text-xs text-slate-600">
-              Status:{" "}
-              <span className="font-medium text-slate-900">
-                {activeSession.status}
-              </span>
-              {activeSession.targetRevenue != null && (
-                <>
-                  {" "}
-                  | Target:{" "}
-                  <span className="font-medium text-emerald-700">
-                    {"\u20b1"}
-                    {activeSession.targetRevenue.toLocaleString("en-PH")}
-                  </span>
-                </>
+      <Card>
+        <CardContent className="grid gap-4 md:grid-cols-2">
+          <div className="space-y-2 md:pr-4 md:border-r md:border-slate-200">
+            <label className="text-xs font-medium text-slate-600">
+              Live session
+            </label>
+            <select
+              value={activeSessionId ?? ""}
+              onChange={(e) =>
+                setActiveSessionId(e.target.value ? e.target.value : undefined)
+              }
+              className={CONTROL_CLASS}
+            >
+              {sessions.length === 0 && <option value="">No sessions yet</option>}
+              {sessions.length > 0 && activeSessionId == null && (
+                <option value="">Select session...</option>
               )}
-            </p>
-          )}
-        </div>
-
-        <div className="flex flex-col gap-2">
-          <label className="text-xs font-semibold uppercase tracking-wide text-slate-600">
-            Order
-          </label>
-          <select
-            value={activeOrderId ?? ""}
-            onChange={(e) =>
-              setActiveOrderId(e.target.value ? e.target.value : undefined)
-            }
-            className={INPUT_CLASS}
-          >
-            {!activeSessionId && (
-              <option value="">Select a session first...</option>
-            )}
-            {activeSessionId && filteredOrders.length === 0 && (
-              <option value="">No orders yet for this session</option>
-            )}
-            {filteredOrders.map((o) => (
-              <option key={o.id} value={o.id}>
-                {o.orderNumber} -{" "}
-                {formatCustomerLabel(
-                  o.customerId,
-                  customerMap[o.customerId ?? ""]?.displayName,
-                  customerMap[o.customerId ?? ""]?.realName
+              {sessions.map((s) => (
+                <option key={s.id} value={s.id}>
+                  {s.title} ({s.platform})
+                </option>
+              ))}
+            </select>
+            {activeSession && (
+              <p className="text-xs text-slate-600">
+                Status:{" "}
+                <span className="font-medium text-slate-900">
+                  {activeSession.status}
+                </span>
+                {activeSession.targetRevenue != null && (
+                  <>
+                    {" "}
+                    | Target:{" "}
+                    <span className="font-medium text-emerald-700">
+                      {formatCurrency(activeSession.targetRevenue)}
+                    </span>
+                  </>
                 )}
-              </option>
-            ))}
-          </select>
-          {activeOrder && (
-            <p className="text-xs text-slate-600">
-              Status:{" "}
-              <span className="font-medium text-slate-900">
-                {activeOrder.status}
-              </span>{" "}
-              | Payment:{" "}
-              <span className="font-medium text-slate-900">
-                {activeOrder.paymentStatus}
-              </span>
-            </p>
-          )}
-          <div className="flex flex-wrap gap-1 text-[11px] text-slate-600">
-            <span>Filter by payment:</span>
-            {["ALL", "UNPAID", "PARTIAL", "PAID"].map((status) => (
-              <button
-                key={status}
-                type="button"
-                onClick={() => setOrderPaymentFilter(status as Order["paymentStatus"] | "ALL")}
-                className={`rounded-full border px-2 py-0.5 ${
-                  orderPaymentFilter === status
-                    ? "border-emerald-500 bg-emerald-50 text-emerald-700"
-                    : "border-slate-200 bg-white text-slate-700 hover:bg-slate-100"
-                }`}
-              >
-                {status === "ALL" ? "All" : status.toLowerCase()} (
-                {status === "ALL"
-                  ? orders.length
-                  : paymentCounts[status as Order["paymentStatus"]] ?? 0}
-                )
-              </button>
-            ))}
+              </p>
+            )}
           </div>
-        </div>
-      </div>
+
+          <div className="space-y-3 md:pl-4">
+            <div className="space-y-2">
+              <label className="text-xs font-medium text-slate-600">Order</label>
+              <select
+                value={activeOrderId ?? ""}
+                onChange={(e) =>
+                  setActiveOrderId(e.target.value ? e.target.value : undefined)
+                }
+                className={CONTROL_CLASS}
+              >
+                {!activeSessionId && (
+                  <option value="">Select a session first...</option>
+                )}
+                {activeSessionId && filteredOrders.length === 0 && (
+                  <option value="">No orders yet for this session</option>
+                )}
+                {filteredOrders.map((o) => (
+                  <option key={o.id} value={o.id}>
+                    {o.orderNumber} -{" "}
+                    {formatCustomerLabel(
+                      o.customerId,
+                      customerMap[o.customerId ?? ""]?.displayName,
+                      customerMap[o.customerId ?? ""]?.realName,
+                    )}
+                  </option>
+                ))}
+              </select>
+              {activeOrder && (
+                <p className="text-xs text-slate-600">
+                  Status:{" "}
+                  <span className="font-medium text-slate-900">
+                    {activeOrder.status}
+                  </span>{" "}
+                  | Payment:{" "}
+                  <span className="font-medium text-slate-900">
+                    {activeOrder.paymentStatus}
+                  </span>
+                </p>
+              )}
+            </div>
+
+            <div className="space-y-2">
+              <div className="text-xs font-medium text-slate-600">
+                Filter by payment
+              </div>
+              <div className="flex max-w-full gap-2 overflow-x-auto pb-1">
+                {(["ALL", "UNPAID", "PARTIAL", "PAID"] as const).map(
+                  (status) => {
+                    const active = orderPaymentFilter === status;
+                    const count =
+                      status === "ALL"
+                        ? orders.length
+                        : paymentCounts[status] ?? 0;
+                    return (
+                      <Button
+                        key={status}
+                        size="sm"
+                        variant="secondary"
+                        onClick={() =>
+                          setOrderPaymentFilter(
+                            status === "ALL" ? "ALL" : status,
+                          )
+                        }
+                        className={cn(
+                          "rounded-full font-medium whitespace-nowrap",
+                          active
+                            ? "border-emerald-500 bg-emerald-50 text-emerald-700 hover:bg-emerald-100"
+                            : "border-slate-200 bg-white text-slate-700 hover:bg-slate-50",
+                        )}
+                      >
+                        <span className="capitalize">
+                          {status === "ALL" ? "All" : status.toLowerCase()}
+                        </span>
+                        <span
+                          className={cn(
+                            "ml-1 tabular-nums",
+                            active ? "text-emerald-700/80" : "text-slate-500",
+                          )}
+                        >
+                          {count}
+                        </span>
+                      </Button>
+                    );
+                  },
+                )}
+              </div>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
 
       {infoMessage && (
         <div className="rounded-md border border-emerald-500/60 bg-emerald-50 px-3 py-2 text-xs text-emerald-700">
@@ -418,28 +498,28 @@ export function PaymentsShippingPage() {
         </div>
       )}
 
-      <div className="grid gap-4 lg:grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)]">
-        <div className="space-y-4">
-          <div className={PANEL_CLASS}>
-            <div className="border-b border-slate-200 bg-slate-50 px-3 py-2 text-xs font-semibold uppercase tracking-wide text-slate-600">
-              Order summary
-            </div>
+      <div className="grid gap-6 lg:grid-cols-12">
+        <div className="space-y-6 lg:col-span-6">
+          <Card>
+            <CardHeader>
+              <CardTitle>Order summary</CardTitle>
+            </CardHeader>
             {loadingOrderData ? (
-              <div className="px-3 py-4 text-sm text-slate-600">
+              <div className="px-4 py-4 text-sm text-slate-600">
                 Loading order details...
               </div>
             ) : !orderDetail ? (
-              <div className="px-3 py-4 text-sm text-slate-600">
+              <div className="px-4 py-4 text-sm text-slate-600">
                 Select an order to see its totals and payments.
               </div>
             ) : (
-              <div className="space-y-3 p-3 text-sm">
-                <div className="flex items-center justify-between gap-2">
+              <CardContent className="space-y-4 text-sm">
+                <div className="flex flex-wrap items-start justify-between gap-3">
                   <div>
-                    <div className="text-xs uppercase tracking-wide text-slate-600">
+                    <div className="text-xs font-medium text-slate-600">
                       Order #
                     </div>
-                    <div className="font-semibold text-emerald-700">
+                    <div className="text-sm font-semibold text-slate-900">
                       {orderDetail.order.orderNumber}
                     </div>
                     <div className="text-xs text-slate-600">
@@ -448,606 +528,688 @@ export function PaymentsShippingPage() {
                         orderDetail.customer?.displayName ??
                           customerMap[orderDetail.order.customerId]?.displayName,
                         orderDetail.customer?.realName ??
-                          customerMap[orderDetail.order.customerId]?.realName
+                          customerMap[orderDetail.order.customerId]?.realName,
                       )}
                     </div>
                   </div>
                   <div className="text-right">
-                    <div className="text-xs uppercase tracking-wide text-slate-600">
+                    <div className="text-xs font-medium text-slate-600">
                       Created
                     </div>
-                    <div className="text-xs text-slate-800">
+                    <div className="text-xs text-slate-700">
                       {formatDateTime(orderDetail.order.createdAt)}
                     </div>
                   </div>
                 </div>
 
-                <div className="grid grid-cols-2 gap-2 text-xs">
-                  <div
-                    className={`${MUTED_PANEL_CLASS} border border-slate-200 bg-slate-50 p-2`}
-                  >
-                    <div className="text-slate-600">Subtotal</div>
-                    <div className="font-semibold text-slate-900">
+                <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 text-xs">
+                  <div className="rounded-lg bg-slate-50 px-3 py-2">
+                    <div className="text-xs font-medium text-slate-600">
+                      Subtotal
+                    </div>
+                    <div className="mt-1 font-semibold tabular-nums text-slate-900">
                       {formatCurrency(orderDetail.order.subtotal)}
                     </div>
                   </div>
-                  <div
-                    className={`${MUTED_PANEL_CLASS} border border-slate-200 bg-slate-50 p-2`}
-                  >
-                    <div className="text-slate-600">Discounts</div>
-                    <div className="font-semibold text-slate-900">
+                  <div className="rounded-lg bg-slate-50 px-3 py-2">
+                    <div className="text-xs font-medium text-slate-600">
+                      Discounts
+                    </div>
+                    <div className="mt-1 font-semibold tabular-nums text-slate-900">
                       {formatCurrency(
                         (orderDetail.order.discountTotal ?? 0) +
-                          (orderDetail.order.promoDiscountTotal ?? 0)
+                          (orderDetail.order.promoDiscountTotal ?? 0),
                       )}
                     </div>
                   </div>
-                  <div
-                    className={`${MUTED_PANEL_CLASS} border border-slate-200 bg-slate-50 p-2`}
-                  >
-                    <div className="text-slate-600">Shipping + COD</div>
-                    <div className="font-semibold text-slate-900">
+                  <div className="rounded-lg bg-slate-50 px-3 py-2">
+                    <div className="text-xs font-medium text-slate-600">
+                      Shipping + COD
+                    </div>
+                    <div className="mt-1 font-semibold tabular-nums text-slate-900">
                       {formatCurrency(
                         (orderDetail.order.shippingFee ?? 0) +
-                          (orderDetail.order.codFee ?? 0)
+                          (orderDetail.order.codFee ?? 0),
                       )}
                     </div>
                   </div>
-                  <div
-                    className={`${MUTED_PANEL_CLASS} border border-slate-200 bg-slate-50 p-2`}
-                  >
-                    <div className="text-slate-600">Other fees</div>
-                    <div className="font-semibold text-slate-900">
+                  <div className="rounded-lg bg-slate-50 px-3 py-2">
+                    <div className="text-xs font-medium text-slate-600">
+                      Other fees
+                    </div>
+                    <div className="mt-1 font-semibold tabular-nums text-slate-900">
                       {formatCurrency(orderDetail.order.otherFees)}
                     </div>
                   </div>
-                  <div
-                    className={`${MUTED_PANEL_CLASS} border border-slate-200 bg-slate-50 p-2`}
-                  >
-                    <div className="text-slate-600">Grand total</div>
-                    <div className="font-semibold text-emerald-700">
+                  <div className="rounded-lg bg-slate-50 px-3 py-2">
+                    <div className="text-xs font-medium text-slate-600">
+                      Grand total
+                    </div>
+                    <div className="mt-1 font-semibold tabular-nums text-emerald-700">
                       {formatCurrency(orderDetail.order.grandTotal)}
                     </div>
                   </div>
-                  <div
-                    className={`${MUTED_PANEL_CLASS} border border-slate-200 bg-slate-50 p-2`}
-                  >
-                    <div className="text-slate-600">Paid</div>
-                    <div className="font-semibold text-slate-900">
+                  <div className="rounded-lg bg-slate-50 px-3 py-2">
+                    <div className="text-xs font-medium text-slate-600">
+                      Paid
+                    </div>
+                    <div className="mt-1 font-semibold tabular-nums text-slate-900">
                       {formatCurrency(orderDetail.order.amountPaid)}
                     </div>
                   </div>
-                  <div
-                    className={`${MUTED_PANEL_CLASS} border border-slate-200 bg-slate-50 p-2`}
-                  >
-                    <div className="text-slate-600">Balance</div>
-                    <div className="font-semibold text-amber-700">
+                  <div className="rounded-lg bg-slate-50 px-3 py-2">
+                    <div className="text-xs font-medium text-slate-600">
+                      Balance
+                    </div>
+                    <div className="mt-1 font-semibold tabular-nums text-amber-700">
                       {formatCurrency(orderDetail.order.balanceDue)}
                     </div>
                   </div>
-                  <div
-                    className={`${MUTED_PANEL_CLASS} border border-slate-200 bg-slate-50 p-2`}
-                  >
-                    <div className="text-slate-600">Payment status</div>
-                    <div className="font-semibold text-slate-900">
-                      {orderDetail.order.paymentStatus}
+                  <div className="rounded-lg bg-slate-50 px-3 py-2">
+                    <div className="text-xs font-medium text-slate-600">
+                      Payment status
+                    </div>
+                    <div className="mt-1">
+                      <Badge
+                        variant={orderPaymentBadgeVariant(
+                          orderDetail.order.paymentStatus,
+                        )}
+                        className="text-[10px] uppercase tracking-wide"
+                      >
+                        {orderDetail.order.paymentStatus}
+                      </Badge>
                     </div>
                   </div>
                 </div>
-              </div>
+              </CardContent>
             )}
-          </div>
+          </Card>
 
-          <div className={PANEL_CLASS}>
-            <div className="flex items-center justify-between border-b border-slate-200 bg-slate-50 px-3 py-2 text-xs font-semibold uppercase tracking-wide text-slate-600">
-              <span>Payments for this order</span>
-              <div className="flex items-center gap-2 text-[11px] font-normal lowercase text-slate-600">
-                <span>Method:</span>
+          <Card>
+            <CardHeader className="flex flex-col items-start gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <CardTitle>Payments for this order</CardTitle>
+              <div className="flex max-w-full items-center gap-2 overflow-x-auto pb-1 text-xs text-slate-600">
+                <span className="shrink-0">Method:</span>
                 {(
                   ["ALL", "GCASH", "MAYA", "BANK", "COD", "CASH", "OTHER"] as const
-                ).map((method) => (
-                  <button
-                    key={method}
-                    type="button"
-                    onClick={() =>
-                      setPaymentMethodFilter(method === "ALL" ? "ALL" : method)
-                    }
-                    className={`rounded-full border px-2 py-0.5 ${
-                      paymentMethodFilter === method
-                        ? "border-emerald-500 bg-emerald-50 text-emerald-700"
-                        : "border-slate-200 bg-white text-slate-700 hover:bg-slate-100"
-                    }`}
-                  >
-                    {method === "ALL" ? "All" : method}
-                    {" ("}
-                    {method === "ALL"
+                ).map((method) => {
+                  const active = paymentMethodFilter === method;
+                  const count =
+                    method === "ALL"
                       ? payments.length
-                      : methodCounts[method as Payment["method"]] ?? 0}
-                    {")"}
-                  </button>
-                ))}
+                      : methodCounts[method as Payment["method"]] ?? 0;
+                  return (
+                    <Button
+                      key={method}
+                      size="sm"
+                      variant="secondary"
+                      onClick={() =>
+                        setPaymentMethodFilter(method === "ALL" ? "ALL" : method)
+                      }
+                      className={cn(
+                        "rounded-full font-medium whitespace-nowrap",
+                        active
+                          ? "border-emerald-500 bg-emerald-50 text-emerald-700 hover:bg-emerald-100"
+                          : "border-slate-200 bg-white text-slate-700 hover:bg-slate-50",
+                      )}
+                    >
+                      {method === "ALL" ? "All" : method}
+                      <span
+                        className={cn(
+                          "ml-1 tabular-nums",
+                          active ? "text-emerald-700/80" : "text-slate-500",
+                        )}
+                      >
+                        ({count})
+                      </span>
+                    </Button>
+                  );
+                })}
               </div>
-            </div>
-            <div className="max-h-64 overflow-y-auto">
-              {loadingOrderData ? (
-                <div className="px-3 py-4 text-sm text-slate-600">
-                  Loading payments...
-                </div>
-              ) : !activeOrderId ? (
-                <div className="px-3 py-4 text-sm text-slate-600">
-                  Select an order first.
-                </div>
-              ) : filteredPayments.length === 0 ? (
-                <div className="px-3 py-4 text-sm text-slate-600">
-                  Walang payments pa for this order.
-                </div>
-              ) : (
-                <table className="min-w-full text-left text-xs">
-                  <thead className={TABLE_HEAD_CLASS}>
-                    <tr>
-                      <th className="px-3 py-2">Date</th>
-                      <th className="px-3 py-2 text-right">Amount</th>
-                      <th className="px-3 py-2">Method</th>
-                      <th className="px-3 py-2">Ref #</th>
-                      <th className="px-3 py-2">Status</th>
-                      <th className="px-3 py-2 text-right">Actions</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {filteredPayments.map((p) => (
-                      <tr key={p.id} className="border-t border-slate-200">
-                        <td className="px-3 py-2 text-[11px] text-slate-700">
-                          {formatDateTime(p.date)}
-                        </td>
-                        <td className="px-3 py-2 text-right text-[11px] text-slate-900">
-                          {formatCurrency(p.amount)}
-                        </td>
-                        <td className="px-3 py-2 text-[11px] text-slate-700">
-                          {p.method}
-                        </td>
-                        <td className="px-3 py-2 text-[11px] text-slate-500">
-                          {p.referenceNumber ?? "-"}
-                        </td>
-                        <td className="px-3 py-2 text-[11px] text-slate-700">
-                          {p.status}
-                        </td>
-                        <td className="px-3 py-2 text-right text-[11px]">
-                          <button
-                            type="button"
-                            disabled={p.status === "VOIDED"}
-                            onClick={() => void handleVoidPayment(p)}
-                            className="rounded border border-rose-500/70 px-2 py-0.5 text-[10px] font-medium text-rose-700 hover:bg-rose-50 disabled:cursor-not-allowed disabled:border-slate-300 disabled:text-slate-400"
-                          >
-                            {voidingPaymentId === p.id
-                              ? "Voiding..."
-                              : p.status === "VOIDED"
-                              ? "Voided"
-                              : "Void"}
-                          </button>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              )}
-            </div>
-          </div>
-
-          <div className={PANEL_CLASS}>
-            <div className="border-b border-slate-200 bg-slate-50 px-3 py-2 text-xs font-semibold uppercase tracking-wide text-slate-600">
-              Add payment
-            </div>
-            <form
-              onSubmit={handleSubmitPayment}
-              className="space-y-3 p-3 text-sm"
-            >
-              {!activeOrderId ? (
-                <p className="text-sm text-slate-600">
-                  Select an order first to add a payment.
-                </p>
-              ) : (
-                <>
-                  <div className="space-y-1">
-                    <label className="text-xs font-medium text-slate-700">
-                      Amount <span className="text-rose-500">*</span>
-                    </label>
-                    <input
-                      type="number"
-                      min="0"
-                      step="0.01"
-                      inputMode="decimal"
-                      value={formAmount}
-                      onChange={(e) => setFormAmount(e.target.value)}
-                      className={INPUT_CLASS}
-                      placeholder="0.00"
-                    />
-                    {orderDetail && (
-                      <p className="text-xs text-slate-600">
-                        Current balance:{" "}
-                        <span className="font-semibold text-amber-700">
-                          {formatCurrency(orderDetail.order.balanceDue)}
-                        </span>
-                      </p>
-                    )}
+            </CardHeader>
+            <CardContent className="p-0">
+              <div className="max-h-64 overflow-y-auto">
+                {loadingOrderData ? (
+                  <div className="px-4 py-4 text-sm text-slate-600">
+                    Loading payments...
                   </div>
-
-                  <div className="space-y-1">
-                    <label className="text-xs font-medium text-slate-700">
-                      Method <span className="text-rose-500">*</span>
-                    </label>
-                    <select
-                      value={formMethod}
-                      onChange={(e) =>
-                        setFormMethod(e.target.value as Payment["method"])
-                      }
-                      className={INPUT_CLASS}
-                    >
-                      <option value="GCASH">GCash</option>
-                      <option value="MAYA">Maya</option>
-                      <option value="BANK">Bank transfer</option>
-                      <option value="COD">COD</option>
-                      <option value="CASH">Cash</option>
-                      <option value="OTHER">Other</option>
-                    </select>
+                ) : !activeOrderId ? (
+                  <div className="px-4 py-4 text-sm text-slate-600">
+                    Select an order first.
                   </div>
-
-                  <div className="space-y-1">
-                    <label className="text-xs font-medium text-slate-700">
-                      Date
-                    </label>
-                    <input
-                      type="date"
-                      value={formDate}
-                      onChange={(e) => setFormDate(e.target.value)}
-                      className={INPUT_CLASS}
-                    />
+                ) : filteredPayments.length === 0 ? (
+                  <div className="px-4 py-4 text-sm text-slate-600">
+                    Walang payments pa for this order.
                   </div>
-
-                  <div className="space-y-1">
-                    <label className="text-xs font-medium text-slate-700">
-                      Reference #
-                    </label>
-                    <input
-                      type="text"
-                      value={formRef}
-                      onChange={(e) => setFormRef(e.target.value)}
-                      className={INPUT_CLASS}
-                      placeholder="GCash ref, bank ref, etc."
-                    />
-                  </div>
-
-                  <div className="space-y-1">
-                    <label className="text-xs font-medium text-slate-700">
-                      Notes
-                    </label>
-                    <textarea
-                      value={formNotes}
-                      onChange={(e) => setFormNotes(e.target.value)}
-                      rows={3}
-                      className={`${INPUT_CLASS} min-h-[90px]`}
-                      placeholder="Optional notes (ex: partial payment, who paid, etc.)"
-                    />
-                  </div>
-
-                  <button
-                    type="submit"
-                    disabled={!activeOrderId || savingPayment}
-                    className="w-full rounded-md bg-emerald-500 px-3 py-1.5 text-sm font-medium text-slate-950 shadow-sm hover:bg-emerald-600 disabled:cursor-not-allowed disabled:bg-slate-300 disabled:text-slate-500"
-                  >
-                    {savingPayment ? "Saving payment..." : "Save payment"}
-                  </button>
-                </>
-              )}
-            </form>
-          </div>
-        </div>
-        <div className="space-y-4">
-          <div className={PANEL_CLASS}>
-            <div className="border-b border-slate-200 bg-slate-50 px-3 py-2 text-xs font-semibold uppercase tracking-wide text-slate-600">
-              Shipment details
-            </div>
-
-            <form onSubmit={handleSaveShipment} className="space-y-3 p-3 text-sm">
-              {!activeOrderId ? (
-                <p className="text-sm text-slate-600">
-                  Select an order from the queue to create or edit its shipment.
-                </p>
-              ) : loadingOrderData ? (
-                <p className="text-sm text-slate-600">Loading shipment info...</p>
-              ) : (
-                <>
-                  {orderDetail && (
-                    <div className="mb-2 grid grid-cols-2 gap-2 text-xs">
-                      <div
-                        className={`${MUTED_PANEL_CLASS} border border-slate-200 bg-slate-50 p-2`}
-                      >
-                        <div className="text-slate-600">Grand total</div>
-                        <div className="font-semibold text-emerald-700">
-                          {formatCurrency(orderDetail.order.grandTotal)}
-                        </div>
-                      </div>
-                      <div
-                        className={`${MUTED_PANEL_CLASS} border border-slate-200 bg-slate-50 p-2`}
-                      >
-                        <div className="text-slate-600">Balance</div>
-                        <div className="font-semibold text-amber-700">
-                          {formatCurrency(orderDetail.order.balanceDue)}
-                        </div>
-                      </div>
-                      <div
-                        className={`${MUTED_PANEL_CLASS} border border-slate-200 bg-slate-50 p-2`}
-                      >
-                        <div className="text-slate-600">Payment status</div>
-                        <div className="font-semibold text-slate-900">
-                          {orderDetail.order.paymentStatus}
-                        </div>
-                      </div>
-                      <div
-                        className={`${MUTED_PANEL_CLASS} border border-slate-200 bg-slate-50 p-2`}
-                      >
-                        <div className="text-slate-600">Order status</div>
-                        <div className="font-semibold text-slate-900">
-                          {orderDetail.order.status}
-                        </div>
-                      </div>
-                    </div>
-                  )}
-
-                  <div className="space-y-1">
-                    <label className="text-xs font-medium text-slate-700">
-                      Courier <span className="text-rose-500">*</span>
-                    </label>
-                    <input
-                      type="text"
-                      value={formCourier}
-                      onChange={(e) => setFormCourier(e.target.value)}
-                      className={INPUT_CLASS}
-                      placeholder="J&T, JRS, LBC, etc."
-                    />
-                  </div>
-
-                  <div className="space-y-1">
-                    <label className="text-xs font-medium text-slate-700">
-                      Tracking number
-                    </label>
-                    <input
-                      type="text"
-                      value={formTracking}
-                      onChange={(e) => setFormTracking(e.target.value)}
-                      className={INPUT_CLASS}
-                      placeholder="Tracking number from courier"
-                    />
-                  </div>
-
-                  <div className="space-y-1">
-                    <label className="text-xs font-medium text-slate-700">
-                      Shipping fee
-                    </label>
-                    <input
-                      type="number"
-                      min="0"
-                      step="0.01"
-                      inputMode="decimal"
-                      value={formShippingFee}
-                      onChange={(e) => setFormShippingFee(e.target.value)}
-                      className={INPUT_CLASS}
-                      placeholder="0.00"
-                    />
-                  </div>
-
-                  <div className="space-y-1">
-                    <label className="text-xs font-medium text-slate-700">
-                      Status
-                    </label>
-                    <select
-                      value={formStatus}
-                      onChange={(e) =>
-                        setFormStatus(e.target.value as Shipment["status"])
-                      }
-                      className={INPUT_CLASS}
-                    >
-                      <option value="PENDING">Pending</option>
-                      <option value="BOOKED">Booked / To pick up</option>
-                      <option value="IN_TRANSIT">In transit</option>
-                      <option value="DELIVERED">Delivered</option>
-                      <option value="RETURNED">Returned</option>
-                      <option value="LOST">Lost</option>
-                    </select>
-                  </div>
-
-                  <div className="grid grid-cols-3 gap-2">
-                    <div className="space-y-1">
-                      <label className="text-xs font-medium text-slate-700">
-                        Booking date
-                      </label>
-                      <input
-                        type="date"
-                        value={formBookingDate}
-                        onChange={(e) => setFormBookingDate(e.target.value)}
-                        className={`${INPUT_CLASS} text-xs`}
-                      />
-                    </div>
-                    <div className="space-y-1">
-                      <label className="text-xs font-medium text-slate-700">
-                        Ship date
-                      </label>
-                      <input
-                        type="date"
-                        value={formShipDate}
-                        onChange={(e) => setFormShipDate(e.target.value)}
-                        className={`${INPUT_CLASS} text-xs`}
-                      />
-                    </div>
-                    <div className="space-y-1">
-                      <label className="text-xs font-medium text-slate-700">
-                        Delivery date
-                      </label>
-                      <input
-                        type="date"
-                        value={formDeliveryDate}
-                        onChange={(e) => setFormDeliveryDate(e.target.value)}
-                        className={`${INPUT_CLASS} text-xs`}
-                      />
-                    </div>
-                  </div>
-
-                  <div className="space-y-1">
-                    <label className="text-xs font-medium text-slate-700">
-                      Notes
-                    </label>
-                    <textarea
-                      value={formShipmentNotes}
-                      onChange={(e) => setFormShipmentNotes(e.target.value)}
-                      rows={3}
-                      className={`${INPUT_CLASS} min-h-[90px]`}
-                      placeholder="Optional notes (ex: rider, special instructions, RTD reason, etc.)"
-                    />
-                  </div>
-
-                  <button
-                    type="submit"
-                    disabled={savingShipment}
-                    className="w-full rounded-md bg-emerald-500 px-3 py-1.5 text-sm font-medium text-slate-950 shadow-sm hover:bg-emerald-600 disabled:cursor-not-allowed disabled:bg-slate-300 disabled:text-slate-500"
-                  >
-                    {savingShipment ? "Saving shipment..." : "Save shipment"}
-                  </button>
-
-                  {shipment && (
-                    <div className="mt-2 space-y-1 border-t border-slate-200 pt-2 text-xs">
-                      <div className="text-slate-600">Quick status:</div>
-                      <div className="flex flex-wrap gap-2">
-                        <button
-                          type="button"
-                          disabled={updatingShipmentStatus}
-                          onClick={() => void handleQuickStatusChange("BOOKED")}
-                          className="rounded border border-slate-300 px-2 py-0.5 text-[11px] text-slate-800 hover:bg-slate-100 disabled:cursor-not-allowed disabled:text-slate-400"
-                        >
-                          Mark as booked
-                        </button>
-                        <button
-                          type="button"
-                          disabled={updatingShipmentStatus}
-                          onClick={() =>
-                            void handleQuickStatusChange("IN_TRANSIT")
-                          }
-                          className="rounded border border-slate-300 px-2 py-0.5 text-[11px] text-slate-800 hover:bg-slate-100 disabled:cursor-not-allowed disabled:text-slate-400"
-                        >
-                          Mark as in transit
-                        </button>
-                        <button
-                          type="button"
-                          disabled={updatingShipmentStatus}
-                          onClick={() =>
-                            void handleQuickStatusChange("DELIVERED")
-                          }
-                          className="rounded border border-emerald-500/70 px-2 py-0.5 text-[11px] text-emerald-700 hover:bg-emerald-50 disabled:cursor-not-allowed disabled:text-slate-400"
-                        >
-                          Mark as delivered
-                        </button>
-                      </div>
-                      <p className="text-xs text-slate-600">
-                        Current status:{" "}
-                        <span className="font-medium text-slate-900">
-                          {shipment.status}
-                        </span>{" "}
-                        | Last updated:{" "}
-                        <span className="font-medium text-slate-900">
-                          {formatDateTime(
-                            shipment.deliveryDate ?? shipment.shipDate
-                          )}
-                        </span>
-                      </p>
-                    </div>
-                  )}
-                </>
-              )}
-            </form>
-          </div>
-
-          <div className={PANEL_CLASS}>
-            <div className="border-b border-slate-200 bg-slate-50 px-3 py-2 text-xs font-semibold uppercase tracking-wide text-slate-600">
-              Shipping queue for this session
-            </div>
-            <div className="max-h-[420px] overflow-y-auto">
-              {loadingOrders ? (
-                <div className="px-3 py-4 text-sm text-slate-600">
-                  Loading orders...
-                </div>
-              ) : queueOrders.length === 0 ? (
-                <div className="px-3 py-4 text-sm text-slate-600">
-                  Walang orders pa for this session (or all are cancelled /
-                  returned).
-                </div>
-              ) : (
-                <table className="min-w-full text-left text-xs">
-                  <thead className={TABLE_HEAD_CLASS}>
-                    <tr>
-                      <th className="px-3 py-2">Order #</th>
-                      <th className="px-3 py-2">Customer</th>
-                      <th className="px-3 py-2 text-right">Grand total</th>
-                      <th className="px-3 py-2 text-right">Paid</th>
-                      <th className="px-3 py-2">Payment</th>
-                      <th className="px-3 py-2">Status</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {queueOrders.map((o) => {
-                      const isActive = o.id === activeOrderId;
-                      return (
-                        <tr
-                          key={o.id}
-                          className={`border-t border-slate-200 hover:bg-slate-50 ${
-                            isActive ? "bg-slate-100" : "bg-transparent"
-                          }`}
-                          onClick={() => setActiveOrderId(o.id)}
-                        >
-                          <td className="cursor-pointer px-3 py-2 text-[11px] font-semibold text-emerald-700">
-                            {o.orderNumber}
-                          </td>
-                          <td className="cursor-pointer px-3 py-2 text-[11px] text-slate-900">
-                            {formatCustomerLabel(
-                              o.customerId,
-                              customerMap[o.customerId ?? ""]?.displayName,
-                              customerMap[o.customerId ?? ""]?.realName
-                            )}
-                          </td>
-                          <td className="cursor-pointer px-3 py-2 text-right text-[11px] text-slate-900">
-                            {formatCurrency(o.grandTotal)}
-                          </td>
-                          <td className="cursor-pointer px-3 py-2 text-right text-[11px] text-slate-900">
-                            {formatCurrency(o.amountPaid)}
-                          </td>
-                          <td className="cursor-pointer px-3 py-2 text-[11px] text-slate-900">
-                            {o.paymentStatus}
-                          </td>
-                          <td className="cursor-pointer px-3 py-2 text-[11px] text-slate-900">
-                            {o.status}
-                          </td>
+                ) : (
+                  <div className="overflow-x-auto">
+                    <table className="min-w-full text-left text-xs">
+                      <thead className={TABLE_HEAD_CLASS}>
+                        <tr>
+                          <th className="px-3 py-2">Date</th>
+                          <th className="px-3 py-2 text-right">Amount</th>
+                          <th className="px-3 py-2">Method</th>
+                          <th className="px-3 py-2">Ref #</th>
+                          <th className="px-3 py-2">Status</th>
+                          <th className="px-3 py-2 text-right">Actions</th>
                         </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              )}
-            </div>
-          </div>
+                      </thead>
+                      <tbody>
+                        {filteredPayments.map((p) => (
+                          <tr
+                            key={p.id}
+                            className="border-t border-slate-200 hover:bg-slate-50"
+                          >
+                            <td className="px-3 py-2 text-[11px] text-slate-700">
+                              {formatDateTime(p.date)}
+                            </td>
+                            <td className="px-3 py-2 text-right text-[11px] font-semibold tabular-nums text-slate-900">
+                              {formatCurrency(p.amount)}
+                            </td>
+                            <td className="px-3 py-2 text-[11px] text-slate-700">
+                              {p.method}
+                            </td>
+                            <td className="px-3 py-2 text-[11px] text-slate-500">
+                              {p.referenceNumber ?? "-"}
+                            </td>
+                            <td className="px-3 py-2 text-[11px] text-slate-700">
+                              <Badge
+                                variant={paymentRecordBadgeVariant(p.status)}
+                                className="text-[10px] uppercase tracking-wide"
+                              >
+                                {p.status}
+                              </Badge>
+                            </td>
+                            <td className="px-3 py-2 text-right text-[11px]">
+                              <Button
+                                size="sm"
+                                variant="danger"
+                                disabled={p.status === "VOIDED"}
+                                onClick={() => void handleVoidPayment(p)}
+                              >
+                                {voidingPaymentId === p.id
+                                  ? "Voiding..."
+                                  : p.status === "VOIDED"
+                                  ? "Voided"
+                                  : "Void"}
+                              </Button>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle>Add payment</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <form onSubmit={handleSubmitPayment} className="space-y-4 text-sm">
+                {!activeOrderId ? (
+                  <p className="text-sm text-slate-600">
+                    Select an order first to add a payment.
+                  </p>
+                ) : (
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    <div className="space-y-1">
+                      <label className="text-xs font-medium text-slate-600">
+                        Amount <span className="text-rose-500">*</span>
+                      </label>
+                      <input
+                        type="number"
+                        min="0"
+                        step="0.01"
+                        inputMode="decimal"
+                        value={formAmount}
+                        onChange={(e) => setFormAmount(e.target.value)}
+                        className={CONTROL_CLASS}
+                        placeholder="0.00"
+                      />
+                      {orderDetail && (
+                        <p className="text-xs text-slate-600">
+                          Current balance:{" "}
+                          <span className="font-semibold text-amber-700">
+                            {formatCurrency(orderDetail.order.balanceDue)}
+                          </span>
+                        </p>
+                      )}
+                    </div>
+
+                    <div className="space-y-1">
+                      <label className="text-xs font-medium text-slate-600">
+                        Method <span className="text-rose-500">*</span>
+                      </label>
+                      <select
+                        value={formMethod}
+                        onChange={(e) =>
+                          setFormMethod(e.target.value as Payment["method"])
+                        }
+                        className={CONTROL_CLASS}
+                      >
+                        <option value="GCASH">GCash</option>
+                        <option value="MAYA">Maya</option>
+                        <option value="BANK">Bank transfer</option>
+                        <option value="COD">COD</option>
+                        <option value="CASH">Cash</option>
+                        <option value="OTHER">Other</option>
+                      </select>
+                    </div>
+
+                    <div className="space-y-1">
+                      <label className="text-xs font-medium text-slate-600">
+                        Date
+                      </label>
+                      <input
+                        type="date"
+                        value={formDate}
+                        onChange={(e) => setFormDate(e.target.value)}
+                        className={CONTROL_CLASS}
+                      />
+                    </div>
+
+                    <div className="space-y-1">
+                      <label className="text-xs font-medium text-slate-600">
+                        Reference #
+                      </label>
+                      <input
+                        type="text"
+                        value={formRef}
+                        onChange={(e) => setFormRef(e.target.value)}
+                        className={CONTROL_CLASS}
+                        placeholder="GCash ref, bank ref, etc."
+                      />
+                    </div>
+
+                    <div className="space-y-1 sm:col-span-2">
+                      <label className="text-xs font-medium text-slate-600">
+                        Notes
+                      </label>
+                      <textarea
+                        value={formNotes}
+                        onChange={(e) => setFormNotes(e.target.value)}
+                        rows={3}
+                        className={cn(CONTROL_CLASS, "min-h-[90px]")}
+                        placeholder="Optional notes (ex: partial payment, who paid, etc.)"
+                      />
+                    </div>
+
+                    <div className="flex justify-end sm:col-span-2">
+                      <Button
+                        type="submit"
+                        variant="primary"
+                        size="md"
+                        disabled={!activeOrderId || savingPayment}
+                        className="w-full sm:w-auto"
+                      >
+                        {savingPayment ? "Saving payment..." : "Save payment"}
+                      </Button>
+                    </div>
+                  </div>
+                )}
+              </form>
+            </CardContent>
+          </Card>
+        </div>
+        <div className="space-y-6 lg:col-span-6">
+          <Card>
+            <CardHeader>
+              <CardTitle>Shipment details</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <form onSubmit={handleSaveShipment} className="space-y-4 text-sm">
+                {!activeOrderId ? (
+                  <p className="text-sm text-slate-600">
+                    Select an order from the queue to create or edit its shipment.
+                  </p>
+                ) : loadingOrderData ? (
+                  <p className="text-sm text-slate-600">
+                    Loading shipment info...
+                  </p>
+                ) : (
+                  <>
+                    {orderDetail && (
+                      <div className="grid gap-3 sm:grid-cols-2 text-xs">
+                        <div className="rounded-lg bg-slate-50 px-3 py-2">
+                          <div className="text-xs font-medium text-slate-600">
+                            Grand total
+                          </div>
+                          <div className="mt-1 font-semibold tabular-nums text-emerald-700">
+                            {formatCurrency(orderDetail.order.grandTotal)}
+                          </div>
+                        </div>
+                        <div className="rounded-lg bg-slate-50 px-3 py-2">
+                          <div className="text-xs font-medium text-slate-600">
+                            Balance
+                          </div>
+                          <div className="mt-1 font-semibold tabular-nums text-amber-700">
+                            {formatCurrency(orderDetail.order.balanceDue)}
+                          </div>
+                        </div>
+                        <div className="rounded-lg bg-slate-50 px-3 py-2">
+                          <div className="text-xs font-medium text-slate-600">
+                            Payment status
+                          </div>
+                          <div className="mt-1">
+                            <Badge
+                              variant={orderPaymentBadgeVariant(
+                                orderDetail.order.paymentStatus,
+                              )}
+                              className="text-[10px] uppercase tracking-wide"
+                            >
+                              {orderDetail.order.paymentStatus}
+                            </Badge>
+                          </div>
+                        </div>
+                        <div className="rounded-lg bg-slate-50 px-3 py-2">
+                          <div className="text-xs font-medium text-slate-600">
+                            Order status
+                          </div>
+                          <div className="mt-1">
+                            <Badge
+                              variant={orderStatusBadgeVariant(
+                                orderDetail.order.status,
+                              )}
+                              className="text-[10px] uppercase tracking-wide"
+                            >
+                              {orderDetail.order.status}
+                            </Badge>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+
+                    <div className="grid gap-3 sm:grid-cols-2">
+                      <div className="space-y-1">
+                        <label className="text-xs font-medium text-slate-600">
+                          Courier <span className="text-rose-500">*</span>
+                        </label>
+                        <input
+                          type="text"
+                          value={formCourier}
+                          onChange={(e) => setFormCourier(e.target.value)}
+                          className={CONTROL_CLASS}
+                          placeholder="J&T, JRS, LBC, etc."
+                        />
+                      </div>
+
+                      <div className="space-y-1">
+                        <label className="text-xs font-medium text-slate-600">
+                          Tracking number
+                        </label>
+                        <input
+                          type="text"
+                          value={formTracking}
+                          onChange={(e) => setFormTracking(e.target.value)}
+                          className={CONTROL_CLASS}
+                          placeholder="Tracking number from courier"
+                        />
+                      </div>
+
+                      <div className="space-y-1">
+                        <label className="text-xs font-medium text-slate-600">
+                          Shipping fee
+                        </label>
+                        <input
+                          type="number"
+                          min="0"
+                          step="0.01"
+                          inputMode="decimal"
+                          value={formShippingFee}
+                          onChange={(e) => setFormShippingFee(e.target.value)}
+                          className={CONTROL_CLASS}
+                          placeholder="0.00"
+                        />
+                      </div>
+
+                      <div className="space-y-1">
+                        <label className="text-xs font-medium text-slate-600">
+                          Status
+                        </label>
+                        <select
+                          value={formStatus}
+                          onChange={(e) =>
+                            setFormStatus(e.target.value as Shipment["status"])
+                          }
+                          className={CONTROL_CLASS}
+                        >
+                          <option value="PENDING">Pending</option>
+                          <option value="BOOKED">Booked / To pick up</option>
+                          <option value="IN_TRANSIT">In transit</option>
+                          <option value="DELIVERED">Delivered</option>
+                          <option value="RETURNED">Returned</option>
+                          <option value="LOST">Lost</option>
+                        </select>
+                      </div>
+                    </div>
+
+                    <div className="grid gap-3 sm:grid-cols-3">
+                      <div className="space-y-1">
+                        <label className="text-xs font-medium text-slate-600">
+                          Booking date
+                        </label>
+                        <input
+                          type="date"
+                          value={formBookingDate}
+                          onChange={(e) => setFormBookingDate(e.target.value)}
+                          className={CONTROL_CLASS}
+                        />
+                      </div>
+                      <div className="space-y-1">
+                        <label className="text-xs font-medium text-slate-600">
+                          Ship date
+                        </label>
+                        <input
+                          type="date"
+                          value={formShipDate}
+                          onChange={(e) => setFormShipDate(e.target.value)}
+                          className={CONTROL_CLASS}
+                        />
+                      </div>
+                      <div className="space-y-1">
+                        <label className="text-xs font-medium text-slate-600">
+                          Delivery date
+                        </label>
+                        <input
+                          type="date"
+                          value={formDeliveryDate}
+                          onChange={(e) => setFormDeliveryDate(e.target.value)}
+                          className={CONTROL_CLASS}
+                        />
+                      </div>
+                    </div>
+
+                    <div className="space-y-1">
+                      <label className="text-xs font-medium text-slate-600">
+                        Notes
+                      </label>
+                      <textarea
+                        value={formShipmentNotes}
+                        onChange={(e) => setFormShipmentNotes(e.target.value)}
+                        rows={3}
+                        className={cn(CONTROL_CLASS, "min-h-[90px]")}
+                        placeholder="Optional notes (ex: rider, special instructions, RTD reason, etc.)"
+                      />
+                    </div>
+
+                    <div className="flex justify-end">
+                      <Button
+                        type="submit"
+                        variant="primary"
+                        size="md"
+                        disabled={savingShipment}
+                        className="w-full sm:w-auto"
+                      >
+                        {savingShipment ? "Saving shipment..." : "Save shipment"}
+                      </Button>
+                    </div>
+
+                    {shipment && (
+                      <div className="space-y-2 border-t border-slate-200 pt-3 text-xs">
+                        <div className="text-xs font-medium text-slate-600">
+                          Quick status
+                        </div>
+                        <div className="flex flex-wrap gap-2">
+                          <Button
+                            size="sm"
+                            variant="secondary"
+                            disabled={updatingShipmentStatus}
+                            onClick={() => void handleQuickStatusChange("BOOKED")}
+                          >
+                            Mark as booked
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="secondary"
+                            disabled={updatingShipmentStatus}
+                            onClick={() =>
+                              void handleQuickStatusChange("IN_TRANSIT")
+                            }
+                          >
+                            Mark as in transit
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="secondary"
+                            disabled={updatingShipmentStatus}
+                            onClick={() =>
+                              void handleQuickStatusChange("DELIVERED")
+                            }
+                            className="border-emerald-500/70 text-emerald-700 hover:bg-emerald-50"
+                          >
+                            Mark as delivered
+                          </Button>
+                        </div>
+                        <p className="text-xs text-slate-600">
+                          Current status:{" "}
+                          <span className="font-medium text-slate-900">
+                            {shipment.status}
+                          </span>{" "}
+                          | Last updated:{" "}
+                          <span className="font-medium text-slate-900">
+                            {formatDateTime(
+                              shipment.deliveryDate ?? shipment.shipDate,
+                            )}
+                          </span>
+                        </p>
+                      </div>
+                    )}
+                  </>
+                )}
+              </form>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle>Shipping queue for this session</CardTitle>
+            </CardHeader>
+            <CardContent className="p-0">
+              <div className="max-h-[420px] overflow-y-auto">
+                {loadingOrders ? (
+                  <div className="px-4 py-4 text-sm text-slate-600">
+                    Loading orders...
+                  </div>
+                ) : queueOrders.length === 0 ? (
+                  <div className="px-4 py-4 text-sm text-slate-600">
+                    Walang orders pa for this session (or all are cancelled /
+                    returned).
+                  </div>
+                ) : (
+                  <div className="overflow-x-auto">
+                    <table className="min-w-full text-left text-xs">
+                      <thead className={TABLE_HEAD_CLASS}>
+                        <tr>
+                          <th className="px-3 py-2">Order #</th>
+                          <th className="px-3 py-2">Customer</th>
+                          <th className="px-3 py-2 text-right">Grand total</th>
+                          <th className="px-3 py-2 text-right">Paid</th>
+                          <th className="px-3 py-2">Payment</th>
+                          <th className="px-3 py-2">Status</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {queueOrders.map((o) => {
+                          const isActive = o.id === activeOrderId;
+                          return (
+                            <tr
+                              key={o.id}
+                              className={cn(
+                                "border-t border-slate-200 hover:bg-slate-50",
+                                isActive && "bg-emerald-50",
+                              )}
+                              onClick={() => setActiveOrderId(o.id)}
+                            >
+                              <td
+                                className={cn(
+                                  "cursor-pointer px-3 py-2 text-[11px] font-semibold text-emerald-700",
+                                  isActive && "border-l-4 border-emerald-500",
+                                )}
+                              >
+                                {o.orderNumber}
+                              </td>
+                              <td className="cursor-pointer px-3 py-2 text-[11px] text-slate-900">
+                                {formatCustomerLabel(
+                                  o.customerId,
+                                  customerMap[o.customerId ?? ""]?.displayName,
+                                  customerMap[o.customerId ?? ""]?.realName,
+                                )}
+                              </td>
+                              <td className="cursor-pointer px-3 py-2 text-right text-[11px] font-semibold tabular-nums text-slate-900">
+                                {formatCurrency(o.grandTotal)}
+                              </td>
+                              <td className="cursor-pointer px-3 py-2 text-right text-[11px] font-semibold tabular-nums text-slate-900">
+                                {formatCurrency(o.amountPaid)}
+                              </td>
+                              <td className="cursor-pointer px-3 py-2 text-[11px] text-slate-900">
+                                <Badge
+                                  variant={orderPaymentBadgeVariant(
+                                    o.paymentStatus,
+                                  )}
+                                  className="text-[10px] uppercase tracking-wide"
+                                >
+                                  {o.paymentStatus}
+                                </Badge>
+                              </td>
+                              <td className="cursor-pointer px-3 py-2 text-[11px] text-slate-900">
+                                <Badge
+                                  variant={orderStatusBadgeVariant(o.status)}
+                                  className="text-[10px] uppercase tracking-wide"
+                                >
+                                  {o.status}
+                                </Badge>
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </div>
+            </CardContent>
+          </Card>
         </div>
       </div>
 
       {loadingSessions && (
-        <div
-          className={`${MUTED_PANEL_CLASS} px-3 py-2 text-xs text-slate-600`}
-        >
-          Loading sessions...
-        </div>
+        <Card className="bg-slate-50">
+          <CardContent className="py-2 text-xs text-slate-600">
+            Loading sessions...
+          </CardContent>
+        </Card>
       )}
       {loadingOrders && !loadingSessions && (
-        <div
-          className={`${MUTED_PANEL_CLASS} px-3 py-2 text-xs text-slate-600`}
-        >
-          Loading orders...
-        </div>
+        <Card className="bg-slate-50">
+          <CardContent className="py-2 text-xs text-slate-600">
+            Loading orders...
+          </CardContent>
+        </Card>
       )}
-    </div>
+    </Page>
   );
 }

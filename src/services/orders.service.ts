@@ -5,7 +5,7 @@ import {
   getOrCreateCustomerByDisplayName,
   recomputeCustomerStats,
 } from "./customers.service";
-import { adjustStock } from "./inventory.service";
+import { adjustStock, getInventoryItem } from "./inventory.service";
 
 const nowIso = () => new Date().toISOString();
 
@@ -250,7 +250,7 @@ export async function buildOrdersFromClaims(liveSessionId: string): Promise<{
 
     // One order line per claim
     for (const claim of groupClaims) {
-      const item = await db.inventory.get(claim.inventoryItemId);
+      const item = await getInventoryItem(claim.inventoryItemId);
       if (!item) {
         // If item not found, skip that claim
         // (could log this in future)

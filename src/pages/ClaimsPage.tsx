@@ -1,20 +1,30 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
-import type { Claim, InventoryItem, LiveSession } from "../core/types";
+import type {
+  Claim,
+  InventoryItem,
+  InventoryVariant,
+  LiveSession,
+} from "../core/types";
 import { listInventoryItems } from "../services/inventory.service";
 import { listLiveSessions } from "../services/liveSessions.service";
 import {
   createClaim,
+  deleteClaim,
   listClaimsForSession,
   updateClaimStatus,
-  deleteClaim,
 } from "../services/claims.service";
-import {
-  PANEL_CLASS,
-  MUTED_PANEL_CLASS,
-  INPUT_CLASS,
-} from "../theme/classes";
-import { useNotification } from "../components/NotificationProvider";
+import { useNotification } from "../hooks/useNotification";
 import { getItemImage, getVariantImage } from "../services/imageStore";
+import { Page } from "../components/layout/Page";
+import { Badge } from "../components/ui/Badge";
+import { Button } from "../components/ui/Button";
+import {
+  Card,
+  CardContent,
+  CardHeader,
+  CardHint,
+  CardTitle,
+} from "../components/ui/Card";
 
 type StatusFilter = "ALL" | Claim["status"];
 
@@ -26,11 +36,19 @@ interface ClaimFormState {
   soldOnline: boolean;
 }
 
-const FILTER_PANEL_CLASS = `${PANEL_CLASS} flex flex-wrap items-center gap-3 p-3 text-sm`;
-const TABLE_WRAPPER_CLASS = `${PANEL_CLASS} overflow-x-auto overflow-y-auto max-h-[65vh] bg-white shadow-sm`;
+function cn(...classes: Array<string | false | null | undefined>) {
+  return classes.filter(Boolean).join(" ");
+}
+
+const TABLE_WRAPPER_CLASS =
+  "rounded-xl border border-slate-200 bg-white shadow-sm overflow-x-auto md:max-h-[65vh] md:overflow-y-auto";
 const TABLE_HEAD_CLASS =
-  "border-b border-slate-200 bg-slate-50 text-xs uppercase text-slate-600 sticky top-0 z-10";
-const LABEL_CLASS = "text-xs font-medium text-slate-700";
+  "border-b border-slate-200 bg-slate-50 text-xs uppercase tracking-wide text-slate-500 sticky top-0 z-10";
+const LABEL_CLASS = "text-xs font-medium text-slate-600";
+const CONTROL_CLASS =
+  "h-9 w-full rounded-md border border-slate-200 bg-white px-3 text-sm text-slate-900 shadow-sm focus:border-emerald-500 focus:outline-none focus:ring-2 focus:ring-emerald-500/30";
+const CHECKBOX_CLASS =
+  "h-4 w-4 rounded border-slate-300 text-emerald-600 focus:ring-emerald-500";
 
 function formatTime(iso: string) {
   const d = new Date(iso);
@@ -43,35 +61,62 @@ function formatTime(iso: string) {
   });
 }
 
-function renderStatusBadge(status: Claim["status"]) {
-  let label: string = status;
-  let className =
-    "inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-medium";
+function formatCurrencyCompact(value: number): string {
+  const num = Number.isFinite(value) ? value : 0;
+  return `\u20B1${num.toLocaleString("en-PH")}`;
+}
 
+function getVariantAvailable(variant: InventoryVariant): number {
+  return Math.max(
+    0,
+    (variant.stock ?? 0) - (variant.reservedStock ?? 0)
+  );
+}
+
+function getItemAvailable(item: InventoryItem): number {
+  if (item.variants?.length) {
+    return item.variants.reduce(
+      (sum, variant) => sum + getVariantAvailable(variant),
+      0
+    );
+  }
+  return Math.max(0, item.currentStock - item.reservedStock);
+}
+
+function renderStatusBadge(status: Claim["status"]) {
   switch (status) {
     case "ACCEPTED":
-      className += " bg-emerald-100 text-emerald-700";
-      label = "Accepted";
-      break;
+      return (
+        <Badge variant="success" className="text-[10px] uppercase tracking-wide">
+          Accepted
+        </Badge>
+      );
     case "WAITLIST":
-      className += " bg-amber-100 text-amber-700";
-      label = "Waitlist";
-      break;
+      return (
+        <Badge variant="warning" className="text-[10px] uppercase tracking-wide">
+          Waitlist
+        </Badge>
+      );
     case "REJECTED":
-      className += " bg-rose-100 text-rose-700";
-      label = "Rejected";
-      break;
+      return (
+        <Badge variant="danger" className="text-[10px] uppercase tracking-wide">
+          Rejected
+        </Badge>
+      );
     case "CANCELLED":
-      className += " bg-slate-100 text-slate-700";
-      label = "Cancelled";
-      break;
+      return (
+        <Badge variant="neutral" className="text-[10px] uppercase tracking-wide">
+          Cancelled
+        </Badge>
+      );
     case "PENDING":
-      className += " bg-slate-100 text-slate-700";
-      label = "Pending";
-      break;
+    default:
+      return (
+        <Badge variant="neutral" className="text-[10px] uppercase tracking-wide">
+          Pending
+        </Badge>
+      );
   }
-
-  return <span className={className}>{label}</span>;
 }
 
 export function ClaimsPage() {
@@ -231,14 +276,16 @@ export function ClaimsPage() {
   const variantOptions = useMemo(() => {
     if (!form.inventoryItemId) return [];
     const item = inventoryMap.get(form.inventoryItemId);
-    return item?.variants ?? [];
+    if (!item?.variants?.length) return [];
+    return item.variants.map((variant) => ({
+      variant,
+      available: getVariantAvailable(variant),
+    }));
   }, [form.inventoryItemId, inventoryMap]);
 
   const availableInventory = useMemo(() => {
     return inventory.filter(
-      (item) =>
-        item.status === "ACTIVE" &&
-        Math.max(0, item.currentStock - item.reservedStock) > 0
+      (item) => item.status === "ACTIVE" && getItemAvailable(item) > 0
     );
   }, [inventory]);
 
@@ -247,11 +294,12 @@ export function ClaimsPage() {
     const item = inventoryMap.get(form.inventoryItemId);
     const variant = item?.variants?.find((v) => v.id === form.variantId);
     if (!variant) return null;
-    return Math.max(0, variant.stock);
+    return getVariantAvailable(variant);
   }, [form.inventoryItemId, form.variantId, inventoryMap]);
 
   function itemOptionLabel(item: InventoryItem): string {
-    return `${item.itemCode} - ${item.name}`;
+    const available = getItemAvailable(item);
+    return `${item.itemCode} - ${item.name} (${available} avail)`;
   }
 
   const filteredInventory = useMemo(() => {
@@ -298,13 +346,13 @@ export function ClaimsPage() {
       const variant = item.variants.find((v) => v.id === form.variantId);
       if (variant) {
         return {
-          available: Math.max(0, variant.stock ?? 0),
+          available: getVariantAvailable(variant),
           label: variant.label,
         };
       }
     }
 
-    const available = Math.max(0, item.currentStock - item.reservedStock);
+    const available = getItemAvailable(item);
     return { available };
   }
 
@@ -458,13 +506,21 @@ export function ClaimsPage() {
     return list;
   }, [claims, statusFilter, hideCancelledJoy]);
 
-  const availableForItem = getAvailableForSelectedItem();
+  const selectedItem = form.inventoryItemId
+    ? inventoryMap.get(form.inventoryItemId)
+    : undefined;
+  const selectedItemAvailable = selectedItem
+    ? getItemAvailable(selectedItem)
+    : null;
+  const selectedHasVariants = Boolean(selectedItem?.variants?.length);
 
   return (
-    <div className="space-y-4">
-      <div className="flex items-start justify-between gap-4">
-        <div>
-          <h1 className="text-2xl font-semibold text-slate-900">Claims</h1>
+    <Page className="space-y-6">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+        <div className="space-y-1">
+          <h1 className="text-xl font-semibold tracking-tight text-slate-900">
+            Claims
+          </h1>
           <p className="text-sm text-slate-600">
             Dito mo ita-type ang "mine" claims ng customers habang live.
             Auto-accept / waitlist / reject based sa stock.
@@ -472,243 +528,265 @@ export function ClaimsPage() {
         </div>
       </div>
 
-      {loading && (
-        <div className={`${MUTED_PANEL_CLASS} px-3 py-2 text-xs text-slate-600`}>
-          Loading sessions and inventory...
-        </div>
-      )}
+      {loading ? (
+        <Card className="bg-slate-50">
+          <CardContent className="py-3 text-xs text-slate-600">
+            Loading sessions and inventory...
+          </CardContent>
+        </Card>
+      ) : null}
 
       {/* Session selector + controls */}
-      <div className={`${FILTER_PANEL_CLASS} flex-col gap-3 md:flex-row md:items-center`}>
-        <div className="flex w-full flex-col gap-2 md:w-auto md:flex-row md:items-center">
-          <span className="text-slate-600">Live session:</span>
-          <select
-            value={activeSessionId ?? ""}
-            onChange={(e) =>
-              setActiveSessionId(e.target.value ? e.target.value : undefined)
-            }
-            className={`${INPUT_CLASS} w-full md:w-auto`}
-          >
-            <option value="ONLINE">Online / not during live</option>
-            {sessions.length === 0 && <option value="">No sessions yet</option>}
-            {sessions.length > 0 && activeSessionId == null && (
-              <option value="">Select session...</option>
-            )}
-            {sessions.map((s) => (
-              <option key={s.id} value={s.id}>
-                {s.title} ({s.platform})
-              </option>
-            ))}
-          </select>
-        </div>
+      <Card>
+        <CardContent className="space-y-3">
+          <div className="flex flex-col gap-3 lg:flex-row lg:items-end">
+            <div className="flex-1 space-y-1">
+              <label className={LABEL_CLASS}>Live session</label>
+              <select
+                value={activeSessionId ?? ""}
+                onChange={(e) =>
+                  setActiveSessionId(e.target.value ? e.target.value : undefined)
+                }
+                className={CONTROL_CLASS}
+              >
+                <option value="ONLINE">Online / not during live</option>
+                {sessions.length === 0 && <option value="">No sessions yet</option>}
+                {sessions.length > 0 && activeSessionId == null && (
+                  <option value="">Select session...</option>
+                )}
+                {sessions.map((s) => (
+                  <option key={s.id} value={s.id}>
+                    {s.title} ({s.platform})
+                  </option>
+                ))}
+              </select>
+            </div>
 
-        <div className="flex flex-wrap items-center gap-2 text-[11px] text-slate-600">
-          <span>Status:</span>
-          {(
-            ["ALL", "PENDING", "ACCEPTED", "WAITLIST", "REJECTED", "CANCELLED"] as const
-          ).map((s) => (
-            <button
-              key={s}
-              type="button"
-              onClick={() => setStatusFilter(s as StatusFilter)}
-              className={`rounded-full border px-2 py-0.5 ${
-                statusFilter === s
-                  ? "border-emerald-500 bg-emerald-50 text-emerald-700"
-                  : "border-slate-200 bg-white text-slate-700 hover:bg-slate-100"
-              }`}
-            >
-              {s === "ALL" ? "All" : s.toLowerCase()} (
-              {s === "ALL"
-                ? claims.length
-                : statusCounts[s as Claim["status"]] ?? 0}
-              )
-            </button>
-          ))}
-        </div>
+            <div className="flex flex-col gap-2 lg:items-end">
+              <div className="flex items-center justify-between gap-3">
+                <span className={LABEL_CLASS}>Status</span>
+                <label className="inline-flex items-center gap-2 text-xs font-medium text-slate-600">
+                  <input
+                    type="checkbox"
+                    checked={hideCancelledJoy}
+                    onChange={(e) => setHideCancelledJoy(e.target.checked)}
+                    className={CHECKBOX_CLASS}
+                  />
+                  Hide cancelled / joy reserve
+                </label>
+              </div>
+              <div className="flex max-w-full gap-2 overflow-x-auto pb-1">
+                {(
+                  ["ALL", "PENDING", "ACCEPTED", "WAITLIST", "REJECTED", "CANCELLED"] as const
+                ).map((s) => {
+                  const count =
+                    s === "ALL" ? claims.length : statusCounts[s as Claim["status"]] ?? 0;
+                  const active = statusFilter === s;
+                  const label = s === "ALL" ? "All" : s.toLowerCase();
 
-        <label className="inline-flex items-center gap-1 text-[11px] text-slate-700">
-          <input
-            type="checkbox"
-            checked={hideCancelledJoy}
-            onChange={(e) => setHideCancelledJoy(e.target.checked)}
-          />
-          Hide cancelled / joy reserve
-        </label>
-      </div>
-
-      {activeSession && (
-        <div
-          className={`${MUTED_PANEL_CLASS} border border-slate-200 px-2 py-2 text-xs text-slate-600`}
-        >
-          <div className="flex flex-wrap items-center justify-between gap-2">
-            <span>
-              Active session:{" "}
-              <span className="font-semibold text-slate-900">
-                {activeSession.title}
-              </span>{" "}
-              <span className="text-slate-500">
-                ({activeSession.platform} | {activeSession.status})
-              </span>
-            </span>
-            {activeSession.targetRevenue != null && (
-              <span>
-                Target sales:{" "}
-                <span className="font-semibold text-emerald-700">
-                  ₱{activeSession.targetRevenue.toLocaleString("en-PH")}
-                </span>
-              </span>
-            )}
-          </div>
-        </div>
-      )}
-
-      {/* Manual claim entry */}
-      <div className={`${PANEL_CLASS} space-y-3 p-3 text-sm`}>
-        <div className="flex flex-wrap items-center justify-between gap-2">
-          <span className="text-xs font-semibold uppercase tracking-wide text-slate-600">
-            Manual claim entry (type habang nagla-live)
-          </span>
-          {availableForItem != null && (
-            <span className="rounded-md border border-emerald-200 bg-emerald-50 px-3 py-1.5 text-sm font-semibold text-emerald-800">
-              Available stock{availableForItem.label ? ` (${availableForItem.label})` : ""}:{" "}
-              <span className="text-lg text-emerald-700">
-                {availableForItem.available}
-              </span>
-            </span>
-          )}
-        </div>
-
-        <form
-          onSubmit={handleSubmitClaim}
-          className="flex flex-wrap items-end gap-3"
-        >
-          <div className="flex min-w-[200px] flex-1 flex-col gap-1">
-            <label className={LABEL_CLASS}>Customer (comment name)</label>
-            <input
-              type="text"
-              value={form.temporaryName}
-              onChange={(e) =>
-                handleFormChange("temporaryName", e.target.value)
-              }
-              placeholder="e.g., Maria Santos"
-              className={INPUT_CLASS}
-            />
-          </div>
-
-          <div className="flex min-w-[260px] flex-[1.6] flex-col gap-1">
-            <label className={LABEL_CLASS}>Item (search by code/name)</label>
-            <input
-              type="text"
-              value={itemSearch}
-              onChange={(e) => setItemSearch(e.target.value)}
-              placeholder="Type to filter items (active & in stock)"
-              className={INPUT_CLASS}
-            />
-            <select
-              value={form.inventoryItemId}
-              onChange={(e) =>
-                handleFormChange("inventoryItemId", e.target.value)
-              }
-              className={INPUT_CLASS}
-            >
-              <option value="">Select item...</option>
-              {filteredInventory.map((item) => (
-                <option key={item.id} value={item.id}>
-                  {itemOptionLabel(item)}
-                </option>
-              ))}
-            </select>
-          </div>
-
-          <div className="flex min-w-[180px] flex-col gap-1">
-            <label className={LABEL_CLASS}>Variant</label>
-            <select
-              value={form.variantId ?? ""}
-              onChange={(e) =>
-                handleFormChange("variantId", e.target.value || undefined)
-              }
-              className={INPUT_CLASS}
-              disabled={variantOptions.length === 0}
-            >
-              <option value="">
-                {variantOptions.length ? "Select variant..." : "No variants"}
-              </option>
-              {variantOptions.map((v) => (
-                <option key={v.id} value={v.id}>
-                  {v.label}
-                </option>
-              ))}
-            </select>
-            <div className="text-[11px] text-slate-600">
-              {variantAvailable != null ? (
-                <>
-                  Variant stock:{" "}
-                  <span className="font-semibold text-slate-900">
-                    {variantAvailable}
-                  </span>
-                </>
-              ) : (
-                "Select a variant to see variant stock."
-              )}
+                  return (
+                    <Button
+                      key={s}
+                      size="sm"
+                      variant="secondary"
+                      onClick={() => setStatusFilter(s as StatusFilter)}
+                      className={cn(
+                        "rounded-full font-medium",
+                        active
+                          ? "border-emerald-500 bg-emerald-50 text-emerald-700 hover:bg-emerald-100"
+                          : "border-slate-200 bg-white text-slate-700 hover:bg-slate-50",
+                      )}
+                    >
+                      <span className="capitalize">{label}</span>
+                      <span
+                        className={cn(
+                          "ml-1 tabular-nums",
+                          active ? "text-emerald-700/80" : "text-slate-500",
+                        )}
+                      >
+                        {count}
+                      </span>
+                    </Button>
+                  );
+                })}
+              </div>
             </div>
           </div>
+        </CardContent>
+      </Card>
 
-          <div className="flex w-[90px] flex-col gap-1">
-            <label className={LABEL_CLASS}>Qty</label>
-            <input
-              type="number"
-              min={1}
-              value={form.quantity}
-              onChange={(e) => handleFormChange("quantity", e.target.value)}
-              className={INPUT_CLASS}
-            />
-          </div>
-
-          <div className="flex flex-1 items-center text-[11px] text-slate-600">
-            {availableForItem ? (
-              <span className="rounded-md bg-slate-50 px-2 py-2 text-slate-700">
-                Available stock:{" "}
+      {activeSession ? (
+        <Card className="bg-slate-50">
+          <CardContent className="py-3">
+            <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-slate-600">
+              <span>
+                Active session:{" "}
                 <span className="font-semibold text-slate-900">
-                  {availableForItem.available}
+                  {activeSession.title}
+                </span>{" "}
+                <span className="text-slate-500">
+                  ({activeSession.platform} | {activeSession.status})
                 </span>
-                {form.variantId && (
-                  <span className="ml-1 text-slate-600">
-                    (variant:{" "}
-                    {
-                      inventoryMap
-                        .get(form.inventoryItemId!)
-                        ?.variants?.find((v) => v.id === form.variantId)?.label
-                    }
-                    )
-                  </span>
-                )}
               </span>
-            ) : (
-              <span className="text-slate-500">Select an item to see stock.</span>
-            )}
-          </div>
+              {activeSession.targetRevenue != null ? (
+                <span>
+                  Target sales:{" "}
+                  <span className="font-semibold tabular-nums text-emerald-700">
+                    {formatCurrencyCompact(activeSession.targetRevenue)}
+                  </span>
+                </span>
+              ) : null}
+            </div>
+          </CardContent>
+        </Card>
+      ) : null}
 
-          <button
-            type="submit"
-            disabled={!activeSessionId || inventory.length === 0}
-            className="rounded-md bg-emerald-500 px-4 py-2 text-sm font-medium text-slate-950 shadow-sm hover:bg-emerald-600 disabled:cursor-not-allowed disabled:bg-slate-300 disabled:text-slate-500"
-          >
-            Add claim
-          </button>
-        </form>
-
-        {formError && (
-          <div className="rounded-md border border-rose-500/60 bg-rose-50 px-3 py-2 text-xs text-rose-700">
-            {formError}
+      {/* Manual claim entry */}
+      <Card>
+        <CardHeader>
+          <div>
+            <CardTitle>Manual claim entry</CardTitle>
+            <CardHint>Type habang nagla-live. Auto rules based sa stock.</CardHint>
           </div>
-        )}
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <form onSubmit={handleSubmitClaim} className="grid gap-4">
+            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-12 lg:items-end">
+              <div className="space-y-1 sm:col-span-1 lg:col-span-3">
+                <label className={LABEL_CLASS}>Customer (comment name)</label>
+                <input
+                  type="text"
+                  value={form.temporaryName}
+                  onChange={(e) =>
+                    handleFormChange("temporaryName", e.target.value)
+                  }
+                  placeholder="e.g., Maria Santos"
+                  className={CONTROL_CLASS}
+                />
+              </div>
 
-        {infoMessage && (
-          <div className="rounded-md border border-emerald-500/50 bg-emerald-50 px-3 py-2 text-xs text-emerald-700">
-            {infoMessage}
-          </div>
-        )}
-      </div>
+              <div className="space-y-1 sm:col-span-2 lg:col-span-4">
+                <label className={LABEL_CLASS}>Item</label>
+                <input
+                  type="text"
+                  value={itemSearch}
+                  onChange={(e) => setItemSearch(e.target.value)}
+                  placeholder="Search by code/name (in-stock)"
+                  className={CONTROL_CLASS}
+                />
+                <select
+                  value={form.inventoryItemId}
+                  onChange={(e) =>
+                    handleFormChange("inventoryItemId", e.target.value)
+                  }
+                  className={CONTROL_CLASS}
+                >
+                  <option value="">Select item...</option>
+                  {filteredInventory.map((item) => (
+                    <option key={item.id} value={item.id}>
+                      {itemOptionLabel(item)}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="space-y-1 sm:col-span-1 lg:col-span-2">
+                <label className={LABEL_CLASS}>Variant</label>
+                <select
+                  value={form.variantId ?? ""}
+                  onChange={(e) =>
+                    handleFormChange("variantId", e.target.value || undefined)
+                  }
+                  className={CONTROL_CLASS}
+                  disabled={variantOptions.length === 0}
+                >
+                  <option value="">
+                    {variantOptions.length ? "Select variant..." : "No variants"}
+                  </option>
+                  {variantOptions.map(({ variant, available }) => {
+                    const label =
+                      available > 0
+                        ? `${variant.label} (${available} avail)`
+                        : `${variant.label} (Out of stock)`;
+                    return (
+                      <option
+                        key={variant.id}
+                        value={variant.id}
+                        disabled={available <= 0}
+                      >
+                        {label}
+                      </option>
+                    );
+                  })}
+                </select>
+              </div>
+
+              <div className="space-y-1 sm:col-span-1 lg:col-span-1 lg:w-24">
+                <label className={LABEL_CLASS}>Qty</label>
+                <input
+                  type="number"
+                  min={1}
+                  value={form.quantity}
+                  onChange={(e) => handleFormChange("quantity", e.target.value)}
+                  className={CONTROL_CLASS}
+                />
+              </div>
+
+              <div className="sm:col-span-1 lg:col-span-2 lg:justify-self-end">
+                <Button
+                  type="submit"
+                  variant="primary"
+                  disabled={!activeSessionId || inventory.length === 0}
+                  className="w-full whitespace-nowrap lg:w-auto"
+                >
+                  Add claim
+                </Button>
+              </div>
+            </div>
+
+            <div className="flex flex-col gap-1 text-xs text-slate-500">
+              {selectedItem ? (
+                <>
+                  <div>
+                    Total available{selectedHasVariants ? " (all variants)" : ""}:{" "}
+                    <span className="font-semibold tabular-nums text-slate-900">
+                      {selectedItemAvailable ?? 0}
+                    </span>
+                  </div>
+                  {selectedHasVariants ? (
+                    <div>
+                      {variantAvailable != null ? (
+                        <>
+                          Selected variant available:{" "}
+                          <span className="font-semibold tabular-nums text-slate-900">
+                            {variantAvailable}
+                          </span>
+                        </>
+                      ) : (
+                        "Select a variant to see its availability."
+                      )}
+                    </div>
+                  ) : null}
+                </>
+              ) : (
+                <div>Select an item to see available stock.</div>
+              )}
+            </div>
+
+            {formError ? (
+              <div className="rounded-md border border-rose-500/60 bg-rose-50 px-3 py-2 text-xs text-rose-700">
+                {formError}
+              </div>
+            ) : null}
+
+            {infoMessage ? (
+              <div className="rounded-md border border-emerald-500/50 bg-emerald-50 px-3 py-2 text-xs text-emerald-700">
+                {infoMessage}
+              </div>
+            ) : null}
+          </form>
+        </CardContent>
+      </Card>
 
       {error && (
         <div className="rounded-md border border-rose-500/60 bg-rose-50 px-3 py-2 text-sm text-rose-700">
@@ -717,28 +795,25 @@ export function ClaimsPage() {
       )}
 
       {/* Claims table */}
-      <div className={`${TABLE_WRAPPER_CLASS} hidden md:block`}>
-        <table className="min-w-full text-left text-sm">
+      <div className={TABLE_WRAPPER_CLASS}>
+        <table className="min-w-full text-left">
           <thead className={TABLE_HEAD_CLASS}>
             <tr>
-              <th className="px-3 py-2">Time</th>
-              <th className="px-3 py-2">Customer</th>
-              <th className="px-3 py-2">Item</th>
-              <th className="px-3 py-2">Variant</th>
-              <th className="px-3 py-2">Image</th>
-              <th className="px-3 py-2">Category</th>
-              <th className="px-3 py-2">Qty</th>
-              <th className="px-3 py-2 text-center">Status</th>
-              <th className="px-3 py-2">Reason</th>
-              <th className="px-3 py-2 text-right">Actions</th>
+              <th className="px-4 py-2">Time</th>
+              <th className="px-4 py-2">Customer</th>
+              <th className="px-4 py-2">Item</th>
+              <th className="px-4 py-2">Variant</th>
+              <th className="px-4 py-2 text-right">Qty</th>
+              <th className="px-4 py-2 text-center">Status</th>
+              <th className="px-4 py-2 text-right">Actions</th>
             </tr>
           </thead>
-          <tbody>
+          <tbody className="text-sm">
             {claimsLoading ? (
               <tr>
                 <td
-                  colSpan={10}
-                  className="px-3 py-6 text-center text-sm text-slate-600"
+                  colSpan={7}
+                  className="px-4 py-6 text-center text-sm text-slate-600"
                 >
                   Loading claims...
                 </td>
@@ -746,8 +821,8 @@ export function ClaimsPage() {
             ) : filteredClaims.length === 0 ? (
               <tr>
                 <td
-                  colSpan={10}
-                  className="px-3 py-6 text-center text-sm text-slate-600"
+                  colSpan={7}
+                  className="px-4 py-6 text-center text-sm text-slate-600"
                 >
                   Walang claims pa for this session.
                 </td>
@@ -755,9 +830,6 @@ export function ClaimsPage() {
             ) : (
               filteredClaims.map((claim) => {
                 const item = inventoryMap.get(claim.inventoryItemId);
-                const itemLabel = item
-                  ? `${item.itemCode} - ${item.name}`
-                  : "Item not found";
                 const variantLabel =
                   item?.variants?.find((v) => v.id === claim.variantId)?.label ??
                   "-";
@@ -766,225 +838,158 @@ export function ClaimsPage() {
                   claim.variantId && variantImages[claim.variantId]
                     ? variantImages[claim.variantId]
                     : null;
-                const categoryLabel = item?.category ?? "-";
+                const thumb = (variantImage || mainImage) as string | null;
 
                 return (
                   <tr
                     key={claim.id}
                     className="border-t border-slate-200 odd:bg-slate-50/50 hover:bg-slate-50"
                   >
-                    <td className="px-3 py-2 text-xs text-slate-700">
+                    <td className="px-4 py-2 text-xs text-slate-700 whitespace-nowrap">
                       {formatTime(claim.timestamp)}
                     </td>
-                    <td className="px-3 py-2 text-sm text-slate-900">
+                    <td className="px-4 py-2 text-sm text-slate-900">
                       {claim.temporaryName}
                     </td>
-                    <td className="px-3 py-2 text-xs text-slate-700">
-                      {itemLabel}
-                      {claim.soldOnline ? (
-                        <span className="ml-1 rounded-full bg-slate-200 px-2 py-0.5 text-[10px] font-medium uppercase text-slate-700">
-                          Online
-                        </span>
-                      ) : null}
-                      {claim.joyReserve ? (
-                        <span className="ml-1 rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-medium uppercase text-amber-700">
-                          Joy reserve
-                        </span>
-                      ) : null}
+                    <td className="px-4 py-2">
+                      <div className="flex items-start gap-3">
+                        {thumb ? (
+                          <img
+                            src={thumb}
+                            alt={item?.name || variantLabel}
+                            className="mt-0.5 h-8 w-8 cursor-zoom-in rounded-md border border-slate-200 object-cover"
+                            onClick={() =>
+                              setLightbox({
+                                src: thumb,
+                                alt: item?.name || variantLabel,
+                              })
+                            }
+                          />
+                        ) : (
+                          <div className="mt-0.5 flex h-8 w-8 items-center justify-center rounded-md border border-dashed border-slate-200 text-[10px] text-slate-400">
+                            No photo
+                          </div>
+                        )}
+
+                        <div className="min-w-0">
+                          <div className="truncate text-sm font-medium text-slate-900">
+                            {item?.name ?? "Item not found"}
+                          </div>
+                          <div className="mt-0.5 truncate text-xs text-slate-500">
+                            <span className="font-mono">
+                              {item?.itemCode ?? "N/A"}
+                            </span>
+                            <span className="mx-1 text-slate-300">
+                              {"\u2022"}
+                            </span>
+                            {item?.category ?? "-"}
+                          </div>
+                          <div className="mt-1 flex flex-wrap items-center gap-2">
+                            {claim.soldOnline ? (
+                              <Badge
+                                variant="neutral"
+                                className="text-[10px] uppercase tracking-wide"
+                              >
+                                Online
+                              </Badge>
+                            ) : null}
+                            {claim.joyReserve ? (
+                              <Badge
+                                variant="warning"
+                                className="text-[10px] uppercase tracking-wide"
+                              >
+                                Joy reserve
+                              </Badge>
+                            ) : null}
+                            {claim.reason ? (
+                              <span className="truncate text-xs text-slate-500">
+                                Reason: {claim.reason}
+                              </span>
+                            ) : null}
+                          </div>
+                        </div>
+                      </div>
                     </td>
-                    <td className="px-3 py-2 text-xs text-slate-700">
+                    <td className="px-4 py-2 text-xs text-slate-700">
                       {variantLabel}
                     </td>
-                    <td className="px-3 py-2">
-                      {variantImage || mainImage ? (
-                        <img
-                          src={(variantImage || mainImage) as string}
-                          alt={item?.name || variantLabel}
-                          className="h-10 w-10 cursor-zoom-in rounded border border-slate-200 object-cover"
-                          onClick={() =>
-                            setLightbox({
-                              src: (variantImage || mainImage) as string,
-                              alt: item?.name || variantLabel,
-                            })
-                          }
-                        />
-                      ) : (
-                        <div className="flex h-10 w-10 items-center justify-center rounded border border-dashed border-slate-200 text-[10px] text-slate-400">
-                          No photo
-                        </div>
-                      )}
-                    </td>
-                    <td className="px-3 py-2 text-xs text-slate-700">
-                      {categoryLabel}
-                    </td>
-                    <td className="px-3 py-2 text-xs text-slate-900">
+                    <td className="px-4 py-2 text-right font-semibold tabular-nums text-slate-900">
                       {claim.quantity}
                     </td>
-                    <td className="px-3 py-2 text-center text-xs whitespace-nowrap">
+                    <td className="px-4 py-2 text-center whitespace-nowrap">
                       {renderStatusBadge(claim.status)}
                     </td>
-                    <td className="px-3 py-2 text-[11px] text-slate-600">
-                      {claim.reason || "-"}
-                    </td>
-                      <td className="px-3 py-2 text-right text-xs">
-                      <div className="flex flex-wrap justify-end gap-1">
-                        {claim.status === "WAITLIST" && (
-                          <button
-                            type="button"
+                    <td className="px-4 py-2 text-right">
+                      <div className="flex flex-nowrap justify-end gap-2">
+                        {claim.status === "WAITLIST" ? (
+                          <Button
+                            size="sm"
+                            variant="primary"
                             onClick={() => void handleAcceptWaitlisted(claim)}
-                            className="rounded-md border border-emerald-500/70 px-2 py-1 text-[11px] text-emerald-700 hover:bg-emerald-50"
                           >
                             Accept
-                          </button>
-                        )}
-                        {claim.status === "ACCEPTED" && !claim.joyReserve && (
-                          <button
-                            type="button"
+                          </Button>
+                        ) : null}
+                        {claim.status === "ACCEPTED" && !claim.joyReserve ? (
+                          <Button
+                            size="sm"
+                            variant="secondary"
                             onClick={() => void handleJoyReserveClaim(claim)}
-                            className="rounded-md border border-amber-500 px-2 py-1 text-[11px] text-amber-700 hover:bg-amber-50"
+                            className="border-amber-500/80 text-amber-700 hover:bg-amber-50"
                           >
                             Joy reserve
-                          </button>
-                        )}
+                          </Button>
+                        ) : null}
                         {claim.status !== "CANCELLED" || claim.joyReserve ? (
-                          <button
-                            type="button"
+                          <Button
+                            size="sm"
+                            variant="danger"
                             onClick={() => void handleCancelClaim(claim)}
-                            className="rounded-md border border-rose-600 px-2 py-1 text-[11px] text-rose-700 hover:bg-rose-50"
                           >
                             Cancel
-                          </button>
-                          ) : null}
-                        {claim.status === "CANCELLED" &&
-                          (confirmDeleteId === claim.id ? (
-                            <div className="flex items-center gap-2">
-                              <span className="text-[11px] font-medium text-rose-700">
+                          </Button>
+                        ) : null}
+                        {claim.status === "CANCELLED" ? (
+                          confirmDeleteId === claim.id ? (
+                            <>
+                              <span className="self-center text-[11px] font-medium text-rose-700">
                                 Permanently delete?
                               </span>
-                              <button
-                                type="button"
+                              <Button
+                                size="sm"
+                                variant="danger"
                                 onClick={() => void handleDeleteClaim(claim)}
-                                className="rounded-md bg-rose-500 px-2 py-1 text-[11px] font-semibold text-white hover:bg-rose-600"
+                                className="border-rose-600 bg-rose-600 text-white hover:border-rose-700 hover:bg-rose-700"
                               >
                                 Confirm
-                              </button>
-                              <button
-                                type="button"
+                              </Button>
+                              <Button
+                                size="sm"
+                                variant="secondary"
                                 onClick={() => setConfirmDeleteId(null)}
-                                className="rounded-md border border-slate-200 px-2 py-1 text-[11px] text-slate-700 hover:bg-slate-100"
                               >
                                 Cancel
-                              </button>
-                            </div>
+                              </Button>
+                            </>
                           ) : (
-                            <button
-                              type="button"
-                              onClick={() => setConfirmDeleteId(claim.id)}
-                              className="rounded-md border border-rose-500 px-2 py-1 text-[11px] text-rose-700 hover:bg-rose-50"
+                            <Button
+                              size="sm"
+                              variant="danger"
+                              onClick={() => void handleDeleteClaim(claim)}
                             >
                               Delete
-                            </button>
-                          ))}
+                            </Button>
+                          )
+                        ) : null}
                       </div>
-                      </td>
-                    </tr>
-                  );
-                })
+                    </td>
+                  </tr>
+                );
+              })
             )}
           </tbody>
         </table>
       </div>
-      {/* Mobile card view */}
-      <div className="block space-y-3 md:hidden">
-        {claimsLoading ? (
-          <div className={`${PANEL_CLASS} px-3 py-4 text-sm text-slate-600`}>Loading claims...</div>
-        ) : filteredClaims.length === 0 ? (
-          <div className={`${PANEL_CLASS} px-3 py-4 text-sm text-slate-600`}>
-            Walang claims pa for this session.
-          </div>
-        ) : (
-          filteredClaims.map((claim) => {
-            const item = inventoryMap.get(claim.inventoryItemId);
-            const itemLabel = item ? `${item.itemCode} - ${item.name}` : "Item not found";
-            const variantLabel =
-              item?.variants?.find((v) => v.id === claim.variantId)?.label ?? "-";
-            const categoryLabel = item?.category ?? "-";
-            const mainImage = item ? imageMap[item.id] : null;
-            const variantImage =
-              claim.variantId && variantImages[claim.variantId]
-                ? variantImages[claim.variantId]
-                : null;
-
-            return (
-              <div key={claim.id} className={`${PANEL_CLASS} space-y-2`}>
-                <div className="flex items-center justify-between text-[11px] text-slate-600">
-                  <span>{formatTime(claim.timestamp)}</span>
-                  <span>{renderStatusBadge(claim.status)}</span>
-                </div>
-                <div className="flex gap-3">
-                  {variantImage || mainImage ? (
-                    <img
-                      src={(variantImage || mainImage) as string}
-                      alt={item?.name || variantLabel}
-                      className="h-12 w-12 cursor-zoom-in rounded border border-slate-200 object-cover"
-                      onClick={() =>
-                        setLightbox({
-                          src: (variantImage || mainImage) as string,
-                          alt: item?.name || variantLabel,
-                        })
-                      }
-                    />
-                  ) : (
-                    <div className="flex h-12 w-12 items-center justify-center rounded border border-dashed border-slate-200 text-[10px] text-slate-400">
-                      No photo
-                    </div>
-                  )}
-                  <div className="flex-1 text-xs">
-                    <div className="font-semibold text-slate-900">{claim.temporaryName}</div>
-                    <div className="text-slate-700">{itemLabel}</div>
-                    <div className="text-slate-500">Variant: {variantLabel}</div>
-                    <div className="text-slate-500">Category: {categoryLabel}</div>
-                    <div className="text-slate-500">Qty: {claim.quantity}</div>
-                    {claim.reason && (
-                      <div className="text-[11px] text-slate-500">Reason: {claim.reason}</div>
-                    )}
-                  </div>
-                </div>
-                <div className="flex flex-wrap justify-end gap-2 text-[11px]">
-                  {claim.status === "WAITLIST" && (
-                    <button
-                      type="button"
-                      onClick={() => void handleAcceptWaitlisted(claim)}
-                      className="rounded-md border border-emerald-500 px-2 py-1 text-emerald-700 hover:bg-emerald-50"
-                    >
-                      Accept
-                    </button>
-                  )}
-                  {claim.status === "ACCEPTED" && !claim.joyReserve && (
-                    <button
-                      type="button"
-                      onClick={() => void handleJoyReserveClaim(claim)}
-                      className="rounded-md border border-amber-500 px-2 py-1 text-amber-700 hover:bg-amber-50"
-                    >
-                      Joy reserve
-                    </button>
-                  )}
-                  {claim.status !== "CANCELLED" ? (
-                    <button
-                      type="button"
-                      onClick={() => void handleCancelClaim(claim)}
-                      className="rounded-md border border-rose-500 px-2 py-1 text-rose-700 hover:bg-rose-50"
-                    >
-                      Cancel
-                    </button>
-                  ) : null}
-                </div>
-              </div>
-            );
-          })
-        )}
-      </div>
-
       {lightbox && (
         <div
           className="fixed inset-0 z-30 flex items-center justify-center bg-black/70 px-4"
@@ -999,6 +1004,6 @@ export function ClaimsPage() {
           </div>
         </div>
       )}
-    </div>
+    </Page>
   );
 }

@@ -13,6 +13,12 @@ const SETTINGS_ID = "app-settings";
 
 // Theme mode used across the app
 export type ThemeMode = "light" | "dark";
+export type InvoiceTemplate =
+  | "CLASSIC"
+  | "MODERN"
+  | "MINIMAL"
+  | "EMERALD"
+  | "NOIR";
 
 // Extended preferences on top of AppSettings
 export type UserPreferences = AppSettings & {
@@ -21,6 +27,7 @@ export type UserPreferences = AppSettings & {
   ownerName?: string;
   contactEmail?: string;
   contactPhone?: string;
+  logoUrl?: string;
 
   // Global defaults
   defaultPlatform?: "FACEBOOK" | "TIKTOK" | "SHOPEE" | "OTHER";
@@ -39,6 +46,9 @@ export type UserPreferences = AppSettings & {
 
   // UI theme
   theme?: ThemeMode;
+
+  // Invoice template
+  invoiceTemplate?: InvoiceTemplate;
 };
 
 // LocalStorage key for the theme
@@ -56,6 +66,10 @@ export function createDefaultAppSettings(): UserPreferences {
     maxReservationsMinutes: 30,
     defaultShippingFee: 0,
     defaultCodFeePercent: 2,
+    taxIncludedEnabled: false,
+    taxIncludedRatePct: 12,
+    shippingTaxable: true,
+    codTaxable: false,
     // Per original blueprint, currency is fixed to PHP.
     currency: "PHP" as AppSettings["currency"],
   };
@@ -66,6 +80,7 @@ export function createDefaultAppSettings(): UserPreferences {
     ownerName: "",
     contactEmail: "",
     contactPhone: "",
+    logoUrl: "",
     defaultPlatform: "FACEBOOK",
     defaultPaymentMethod: "GCASH",
     showCostInInventory: true,
@@ -74,6 +89,7 @@ export function createDefaultAppSettings(): UserPreferences {
     enableSoundNotifications: false,
     enableDesktopNotifications: false,
     theme: "dark",
+    invoiceTemplate: "EMERALD",
   };
 
   return extended;

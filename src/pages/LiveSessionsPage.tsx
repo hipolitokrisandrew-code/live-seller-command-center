@@ -8,7 +8,7 @@ import {
   deleteLiveSession,
 } from "../services/liveSessions.service";
 import { PANEL_CLASS, INPUT_CLASS } from "../theme/classes";
-import { useNotification } from "../components/NotificationProvider";
+import { useNotification } from "../hooks/useNotification";
 
 type PlatformFilter = "ALL" | LiveSession["platform"];
 type StatusFilter = "ALL" | LiveSession["status"];

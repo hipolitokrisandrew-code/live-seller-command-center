@@ -4,15 +4,24 @@ import {
   getFinanceSnapshotForRange,
   type FinanceRangeInput,
 } from "../services/finance.service";
+import { Page } from "../components/layout/Page";
+import { Button } from "../components/ui/Button";
 import {
-  PANEL_CLASS,
-  MUTED_PANEL_CLASS,
-  INPUT_CLASS,
-} from "../theme/classes";
+  Card,
+  CardContent,
+  CardHeader,
+  CardHint,
+  CardTitle,
+} from "../components/ui/Card";
 
 type RangePreset = "TODAY" | "THIS_WEEK" | "THIS_MONTH" | "CUSTOM";
 
-const SMALL_INPUT_CLASS = `${INPUT_CLASS} px-2 py-1 text-xs`;
+function cn(...classes: Array<string | false | null | undefined>) {
+  return classes.filter(Boolean).join(" ");
+}
+
+const CONTROL_CLASS =
+  "h-9 w-full rounded-md border border-slate-200 bg-white px-3 text-sm text-slate-900 shadow-sm focus:border-emerald-500 focus:outline-none focus:ring-2 focus:ring-emerald-500/30";
 
 function startOfToday() {
   const d = new Date();
@@ -52,7 +61,7 @@ function toIso(d: Date) {
 
 function formatCurrency(value: number | undefined | null): string {
   const num = Number.isFinite(value as number) ? (value as number) : 0;
-  return `₱${num.toLocaleString("en-PH", {
+  return `\u20B1${num.toLocaleString("en-PH", {
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
   })}`;
@@ -232,10 +241,10 @@ export function FinancePage() {
   const donutHasData = donutSegments.some((segment) => segment.percent > 0);
 
   return (
-    <div className="space-y-4">
+    <Page className="space-y-6">
       <div className="flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <h1 className="text-2xl font-semibold text-slate-900">
+        <div className="space-y-1">
+          <h1 className="text-xl font-semibold tracking-tight text-slate-900">
             Finance
           </h1>
           <p className="text-sm text-slate-600">
@@ -244,124 +253,124 @@ export function FinancePage() {
           </p>
         </div>
         {snapshot ? (
-          <div className="flex items-center gap-3 rounded-xl border border-slate-200 bg-white px-4 py-3 text-xs text-slate-600 shadow-sm">
-            <div>
-              <p className="text-[10px] uppercase tracking-wide text-slate-400">
-                Net Profit
-              </p>
-              <p className="text-base font-semibold text-emerald-600">
-                {formatCurrency(snapshot.netProfit)}
-              </p>
-            </div>
-            <div className="h-10 w-px bg-slate-200" />
-            <div>
-              <p className="text-[10px] uppercase tracking-wide text-slate-400">
-                Margin
-              </p>
-              <p className="text-base font-semibold text-slate-900">
-                {formatPercent(snapshot.profitMarginPercent)}
-              </p>
-            </div>
-          </div>
+          <Card>
+            <CardContent className="py-3">
+              <div className="flex items-center gap-4 text-xs text-slate-600">
+                <div>
+                  <p className="text-[10px] uppercase tracking-wide text-slate-400">
+                    Net Profit
+                  </p>
+                  <p className="text-base font-semibold text-emerald-600">
+                    {formatCurrency(snapshot.netProfit)}
+                  </p>
+                </div>
+                <div className="h-8 w-px bg-slate-200" />
+                <div>
+                  <p className="text-[10px] uppercase tracking-wide text-slate-400">
+                    Margin
+                  </p>
+                  <p className="text-base font-semibold text-slate-900">
+                    {formatPercent(snapshot.profitMarginPercent)}
+                  </p>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
         ) : null}
       </div>
 
       {/* Filters */}
-      <div
-        className={`${PANEL_CLASS} grid gap-3 p-3 text-sm md:grid-cols-[minmax(0,1.5fr)_minmax(0,1fr)]`}
-      >
-        <div className="space-y-2">
-          <div className="text-xs font-semibold uppercase tracking-wide text-slate-600">
-            Period
-          </div>
-          <div className="flex flex-wrap gap-2">
-            {(
-              ["TODAY", "THIS_WEEK", "THIS_MONTH", "CUSTOM"] as RangePreset[]
-            ).map((value) => {
-              const isActive = preset === value;
-              return (
-                <button
-                  key={value}
-                  type="button"
-                  onClick={() => handlePresetChange(value)}
-                  className={`rounded-md px-3 py-1 text-xs font-semibold transition ${
-                    isActive
-                      ? "bg-emerald-500 text-slate-950 shadow-sm"
-                      : "bg-slate-100 text-slate-700 hover:bg-slate-200"
-                  }`}
-                >
-                  {rangeLabel(value)}
-                </button>
-              );
-            })}
-          </div>
-          <div className="mt-2 grid grid-cols-2 gap-2">
-            <div className="space-y-1">
-              <label className="text-xs font-medium text-slate-700">
-                From
-              </label>
-              <input
-                type="date"
-                value={fromInput}
-                onChange={(e) => {
-                  setFromInput(e.target.value);
-                  setPreset("CUSTOM");
-                }}
-                className={SMALL_INPUT_CLASS}
-              />
+      <Card>
+        <CardContent className="grid gap-4 md:grid-cols-[minmax(0,1.5fr)_minmax(0,1fr)]">
+          <div className="space-y-2">
+            <div className="text-xs font-medium text-slate-600">Period</div>
+            <div className="flex flex-wrap gap-2">
+              {(
+                ["TODAY", "THIS_WEEK", "THIS_MONTH", "CUSTOM"] as RangePreset[]
+              ).map((value) => {
+                const isActive = preset === value;
+                return (
+                  <Button
+                    key={value}
+                    size="sm"
+                    variant="secondary"
+                    onClick={() => handlePresetChange(value)}
+                    className={cn(
+                      "rounded-full font-medium",
+                      isActive
+                        ? "border-emerald-500 bg-emerald-50 text-emerald-700 hover:bg-emerald-100"
+                        : "text-slate-700",
+                    )}
+                  >
+                    {rangeLabel(value)}
+                  </Button>
+                );
+              })}
             </div>
-            <div className="space-y-1">
-              <label className="text-xs font-medium text-slate-700">
-                To
-              </label>
-              <input
-                type="date"
-                value={toInput}
-                onChange={(e) => {
-                  setToInput(e.target.value);
-                  setPreset("CUSTOM");
-                }}
-                className={SMALL_INPUT_CLASS}
-              />
+            <div className="grid grid-cols-2 gap-2">
+              <div className="space-y-1">
+                <label className="text-xs font-medium text-slate-600">
+                  From
+                </label>
+                <input
+                  type="date"
+                  value={fromInput}
+                  onChange={(e) => {
+                    setFromInput(e.target.value);
+                    setPreset("CUSTOM");
+                  }}
+                  className={CONTROL_CLASS}
+                />
+              </div>
+              <div className="space-y-1">
+                <label className="text-xs font-medium text-slate-600">To</label>
+                <input
+                  type="date"
+                  value={toInput}
+                  onChange={(e) => {
+                    setToInput(e.target.value);
+                    setPreset("CUSTOM");
+                  }}
+                  className={CONTROL_CLASS}
+                />
+              </div>
             </div>
           </div>
-        </div>
 
-        <div className="space-y-2">
-          <div className="text-xs font-semibold uppercase tracking-wide text-slate-600">
-            Platform
+          <div className="space-y-2">
+            <div className="text-xs font-medium text-slate-600">Platform</div>
+            <select
+              value={platform ?? "ALL"}
+              onChange={(e) =>
+                setPlatform(e.target.value as FinanceRangeInput["platform"])
+              }
+              className={CONTROL_CLASS}
+            >
+              <option value="ALL">All platforms</option>
+              <option value="FACEBOOK">Facebook</option>
+              <option value="TIKTOK">TikTok</option>
+              <option value="SHOPEE">Shopee</option>
+              <option value="OTHER">Other</option>
+            </select>
+
+            {snapshot && (
+              <p className="text-xs text-slate-500">
+                Period:{" "}
+                <span className="font-medium text-slate-900">
+                  {periodLabel}
+                </span>
+              </p>
+            )}
           </div>
-          <select
-            value={platform ?? "ALL"}
-            onChange={(e) =>
-              setPlatform(e.target.value as FinanceRangeInput["platform"])
-            }
-            className={`${INPUT_CLASS} text-sm`}
-          >
-            <option value="ALL">All platforms</option>
-            <option value="FACEBOOK">Facebook</option>
-            <option value="TIKTOK">TikTok</option>
-            <option value="SHOPEE">Shopee</option>
-            <option value="OTHER">Other</option>
-          </select>
-
-          {snapshot && (
-            <p className="text-xs text-slate-600">
-              Period:{" "}
-              <span className="font-medium text-slate-900">
-                {periodLabel}
-              </span>
-            </p>
-          )}
-        </div>
-      </div>
+        </CardContent>
+      </Card>
 
       {loading && (
-        <div
-          className={`${MUTED_PANEL_CLASS} px-3 py-2 text-xs text-slate-600`}
-        >
-          Loading finance data...
-        </div>
+        <Card className="bg-slate-50">
+          <CardContent className="py-3 text-xs text-slate-600">
+            Loading finance data...
+          </CardContent>
+        </Card>
       )}
 
       {error && (
@@ -372,353 +381,359 @@ export function FinancePage() {
 
       {/* Summary cards */}
       {snapshot && (
-        <div className="grid gap-3 lg:grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)]">
-          <div className={`${PANEL_CLASS} p-4`}>
-            <div className="flex items-center justify-between">
+        <div className="grid gap-4 lg:grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)]">
+          <Card>
+            <CardHeader className="items-start">
               <div>
-                <p className="text-xs font-semibold uppercase tracking-wide text-slate-600">
-                  Report statistics
-                </p>
-                <p className="text-xs text-slate-500">
+                <CardTitle>Report statistics</CardTitle>
+                <CardHint>
                   Snapshot for {periodLabel.toLowerCase()} across all channels.
-                </p>
+                </CardHint>
               </div>
-              <span className="rounded-full bg-emerald-50 px-2 py-1 text-[11px] font-semibold text-emerald-700">
+              <span className="rounded-full bg-emerald-50 px-2 py-1 text-[10px] font-semibold text-emerald-700">
                 {formatCurrency(snapshot.totalSales)} sales
               </span>
-            </div>
-            <div className="mt-4 grid gap-3 md:grid-cols-4">
-              {[
-                {
-                  label: "Total Sales",
-                  value: snapshot.totalSales,
-                  accent: "text-emerald-600",
-                },
-                {
-                  label: "Gross Profit",
-                  value: snapshot.grossProfit,
-                  accent: "text-slate-900",
-                },
-                {
-                  label: "Cash In",
-                  value: snapshot.cashIn,
-                  accent: "text-emerald-600",
-                },
-                {
-                  label: "Cash Out",
-                  value: snapshot.cashOut,
-                  accent: "text-amber-600",
-                },
-              ].map((item) => (
-                <div key={item.label} className="rounded-xl bg-slate-50 p-3">
-                  <div className="text-[11px] uppercase tracking-wide text-slate-500">
-                    {item.label}
-                  </div>
-                  <div className={`mt-1 text-lg font-semibold ${item.accent}`}>
-                    {formatCurrency(item.value)}
-                  </div>
-                </div>
-              ))}
-            </div>
-            <div className="mt-4 grid gap-3 md:grid-cols-3">
-              <div className="rounded-xl border border-slate-200 bg-white p-3">
-                <div className="text-[11px] uppercase tracking-wide text-slate-500">
-                  Expenses
-                </div>
-                <div className="mt-1 text-lg font-semibold text-slate-900">
-                  {formatCurrency(expenseTotal)}
-                </div>
-                <div className="mt-2 h-2 rounded-full bg-slate-100">
-                  <div
-                    className="h-full rounded-full bg-rose-400"
-                    style={{
-                      width: `${Math.min(
-                        100,
-                        (expenseTotal / Math.max(snapshot.totalSales, 1)) * 100,
-                      )}%`,
-                    }}
-                  />
-                </div>
-              </div>
-              <div className="rounded-xl border border-slate-200 bg-white p-3">
-                <div className="text-[11px] uppercase tracking-wide text-slate-500">
-                  Margin
-                </div>
-                <div className="mt-1 text-lg font-semibold text-emerald-600">
-                  {formatPercent(snapshot.profitMarginPercent)}
-                </div>
-                <div className="mt-2 h-2 rounded-full bg-emerald-100">
-                  <div
-                    className="h-full rounded-full bg-emerald-500"
-                    style={{
-                      width: `${Math.min(
-                        100,
-                        snapshot.profitMarginPercent,
-                      )}%`,
-                    }}
-                  />
-                </div>
-              </div>
-              <div className="rounded-xl border border-slate-200 bg-white p-3">
-                <div className="text-[11px] uppercase tracking-wide text-slate-500">
-                  Net Change
-                </div>
-                <div
-                  className={`mt-1 text-lg font-semibold ${
-                    snapshot.balanceChange >= 0
-                      ? "text-emerald-600"
-                      : "text-rose-600"
-                  }`}
-                >
-                  {formatCurrency(snapshot.balanceChange)}
-                </div>
-                <p className="mt-1 text-[11px] text-slate-500">
-                  Compared to last period.
-                </p>
-              </div>
-            </div>
-          </div>
-
-          <div className={`${PANEL_CLASS} p-4`}>
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-xs font-semibold uppercase tracking-wide text-slate-600">
-                  Expense split
-                </p>
-                <p className="text-xs text-slate-500">
-                  Breakdown of costs vs. profit.
-                </p>
-              </div>
-              <span className="rounded-full bg-slate-100 px-2 py-1 text-[11px] font-semibold text-slate-600">
-                {formatCurrency(snapshot.netProfit)}
-              </span>
-            </div>
-            <div className="mt-4 flex items-center gap-4">
-              <div className="relative h-32 w-32 shrink-0">
-                <svg
-                  viewBox="0 0 42 42"
-                  className="h-full w-full -rotate-90"
-                  role="img"
-                  aria-label="Expense split"
-                >
-                  <circle
-                    cx="21"
-                    cy="21"
-                    r="15.9155"
-                    fill="transparent"
-                    stroke="#e2e8f0"
-                    strokeWidth="6"
-                    pathLength={100}
-                  />
-                  {donutHasData
-                    ? donutSegments.map((segment) => (
-                        <circle
-                          key={segment.label}
-                          cx="21"
-                          cy="21"
-                          r="15.9155"
-                          fill="transparent"
-                          stroke={segment.color}
-                          strokeWidth="6"
-                          pathLength={100}
-                          strokeDasharray={`${segment.percent} ${100 - segment.percent}`}
-                          strokeDashoffset={100 - segment.start}
-                        />
-                      ))
-                    : null}
-                </svg>
-                <div className="absolute inset-0 flex items-center justify-center text-xs font-semibold text-slate-600">
-                  {formatPercent(snapshot.profitMarginPercent)}
-                </div>
-              </div>
-              <div className="space-y-2 text-xs text-slate-600">
-                {donutSegments.map((segment) => (
-                  <div key={segment.label} className="flex items-center gap-2">
-                    <span
-                      className="h-2.5 w-2.5 rounded-full"
-                      style={{ backgroundColor: segment.color }}
-                    />
-                    <span className="flex-1">{segment.label}</span>
-                    <span className="font-semibold text-slate-900">
-                      {formatCurrency(segment.value)}
-                    </span>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+                {[
+                  {
+                    label: "Total Sales",
+                    value: snapshot.totalSales,
+                    accent: "text-emerald-600",
+                  },
+                  {
+                    label: "Gross Profit",
+                    value: snapshot.grossProfit,
+                    accent: "text-slate-900",
+                  },
+                  {
+                    label: "Cash In",
+                    value: snapshot.cashIn,
+                    accent: "text-emerald-600",
+                  },
+                  {
+                    label: "Cash Out",
+                    value: snapshot.cashOut,
+                    accent: "text-amber-600",
+                  },
+                ].map((item) => (
+                  <div key={item.label} className="rounded-lg bg-slate-50 px-3 py-2">
+                    <div className="text-xs font-medium text-slate-600">
+                      {item.label}
+                    </div>
+                    <div className={`mt-1 text-base font-semibold ${item.accent}`}>
+                      {formatCurrency(item.value)}
+                    </div>
                   </div>
                 ))}
               </div>
-            </div>
-            <div className="mt-4 rounded-lg bg-slate-50 px-3 py-2 text-xs text-slate-600">
-              {snapshot.netProfit >= 0
-                ? "Healthy profit margin. Maintain inventory momentum and watch expenses."
-                : "Profit is negative. Review pricing and cost of goods before next cycle."}
-            </div>
-          </div>
+              <div className="grid gap-3 sm:grid-cols-3">
+                <div className="rounded-lg bg-slate-50 px-3 py-2">
+                  <div className="text-xs font-medium text-slate-600">
+                    Expenses
+                  </div>
+                  <div className="mt-1 text-base font-semibold text-slate-900">
+                    {formatCurrency(expenseTotal)}
+                  </div>
+                  <div className="mt-2 h-1.5 rounded-full bg-slate-100">
+                    <div
+                      className="h-full rounded-full bg-rose-400"
+                      style={{
+                        width: `${Math.min(
+                          100,
+                          (expenseTotal / Math.max(snapshot.totalSales, 1)) * 100,
+                        )}%`,
+                      }}
+                    />
+                  </div>
+                </div>
+                <div className="rounded-lg bg-slate-50 px-3 py-2">
+                  <div className="text-xs font-medium text-slate-600">
+                    Margin
+                  </div>
+                  <div className="mt-1 text-base font-semibold text-emerald-600">
+                    {formatPercent(snapshot.profitMarginPercent)}
+                  </div>
+                  <div className="mt-2 h-1.5 rounded-full bg-emerald-100">
+                    <div
+                      className="h-full rounded-full bg-emerald-500"
+                      style={{
+                        width: `${Math.min(
+                          100,
+                          snapshot.profitMarginPercent,
+                        )}%`,
+                      }}
+                    />
+                  </div>
+                </div>
+                <div className="rounded-lg bg-slate-50 px-3 py-2">
+                  <div className="text-xs font-medium text-slate-600">
+                    Net Change
+                  </div>
+                  <div
+                    className={`mt-1 text-base font-semibold ${
+                      snapshot.balanceChange >= 0
+                        ? "text-emerald-600"
+                        : "text-rose-600"
+                    }`}
+                  >
+                    {formatCurrency(snapshot.balanceChange)}
+                  </div>
+                  <p className="mt-1 text-[11px] text-slate-500">
+                    Compared to last period.
+                  </p>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader className="items-start">
+              <div>
+                <CardTitle>Expense split</CardTitle>
+                <CardHint>Breakdown of costs vs. profit.</CardHint>
+              </div>
+              <span className="rounded-full bg-slate-100 px-2 py-1 text-[10px] font-semibold text-slate-600">
+                {formatCurrency(snapshot.netProfit)}
+              </span>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="flex flex-wrap items-center gap-4">
+                <div className="relative h-32 w-32 shrink-0">
+                  <svg
+                    viewBox="0 0 42 42"
+                    className="h-full w-full -rotate-90"
+                    role="img"
+                    aria-label="Expense split"
+                  >
+                    <circle
+                      cx="21"
+                      cy="21"
+                      r="15.9155"
+                      fill="transparent"
+                      stroke="#e2e8f0"
+                      strokeWidth="6"
+                      pathLength={100}
+                    />
+                    {donutHasData
+                      ? donutSegments.map((segment) => (
+                          <circle
+                            key={segment.label}
+                            cx="21"
+                            cy="21"
+                            r="15.9155"
+                            fill="transparent"
+                            stroke={segment.color}
+                            strokeWidth="6"
+                            pathLength={100}
+                            strokeDasharray={`${segment.percent} ${100 - segment.percent}`}
+                            strokeDashoffset={100 - segment.start}
+                          />
+                        ))
+                      : null}
+                  </svg>
+                  <div className="absolute inset-0 flex items-center justify-center text-xs font-semibold text-slate-600">
+                    {formatPercent(snapshot.profitMarginPercent)}
+                  </div>
+                </div>
+                <div className="space-y-2 text-xs text-slate-600">
+                  {donutSegments.map((segment) => (
+                    <div key={segment.label} className="flex items-center gap-2">
+                      <span
+                        className="h-2.5 w-2.5 rounded-full"
+                        style={{ backgroundColor: segment.color }}
+                      />
+                      <span className="flex-1">{segment.label}</span>
+                      <span className="font-semibold text-slate-900">
+                        {formatCurrency(segment.value)}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+              <div className="rounded-lg bg-slate-50 px-3 py-2 text-xs text-slate-600">
+                {snapshot.netProfit >= 0
+                  ? "Healthy profit margin. Maintain inventory momentum and watch expenses."
+                  : "Profit is negative. Review pricing and cost of goods before next cycle."}
+              </div>
+            </CardContent>
+          </Card>
         </div>
       )}
 
       {hasData && snapshot ? (
-        <div className={`${PANEL_CLASS} p-4`}>
-          <div className="flex items-center justify-between">
+        <Card>
+          <CardHeader className="items-start">
             <div>
-              <p className="text-xs font-semibold uppercase tracking-wide text-slate-600">
-                Cash flow snapshot
-              </p>
-              <p className="text-xs text-slate-500">
-                Compare inflows vs. outflows.
-              </p>
+              <CardTitle>Cash flow snapshot</CardTitle>
+              <CardHint>Compare inflows vs. outflows.</CardHint>
             </div>
-            <span className="rounded-full bg-emerald-50 px-2 py-1 text-[11px] font-semibold text-emerald-700">
+            <span className="rounded-full bg-emerald-50 px-2 py-1 text-[10px] font-semibold text-emerald-700">
               {formatCurrency(snapshot.balanceChange)}
             </span>
-          </div>
-          <div className="mt-4 space-y-3">
-            {[
-              {
-                label: "Cash In",
-                value: snapshot.cashIn,
-                color: "bg-emerald-500",
-                text: "text-emerald-600",
-              },
-              {
-                label: "Cash Out",
-                value: snapshot.cashOut,
-                color: "bg-amber-500",
-                text: "text-amber-600",
-              },
-              {
-                label: "Shipping Cost",
-                value: snapshot.totalShippingCost,
-                color: "bg-slate-400",
-                text: "text-slate-600",
-              },
-              {
-                label: "Other Expenses",
-                value: snapshot.totalOtherExpenses,
-                color: "bg-rose-400",
-                text: "text-rose-600",
-              },
-            ].map((item) => (
-              <div key={item.label} className="space-y-1">
-                <div className="flex items-center justify-between text-[11px] text-slate-500">
-                  <span>{item.label}</span>
-                  <span className={`font-semibold ${item.text}`}>
-                    {formatCurrency(item.value)}
-                  </span>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="space-y-3">
+              {[
+                {
+                  label: "Cash In",
+                  value: snapshot.cashIn,
+                  color: "bg-emerald-500",
+                  text: "text-emerald-600",
+                },
+                {
+                  label: "Cash Out",
+                  value: snapshot.cashOut,
+                  color: "bg-amber-500",
+                  text: "text-amber-600",
+                },
+                {
+                  label: "Shipping Cost",
+                  value: snapshot.totalShippingCost,
+                  color: "bg-slate-400",
+                  text: "text-slate-600",
+                },
+                {
+                  label: "Other Expenses",
+                  value: snapshot.totalOtherExpenses,
+                  color: "bg-rose-400",
+                  text: "text-rose-600",
+                },
+              ].map((item) => (
+                <div key={item.label} className="space-y-1">
+                  <div className="flex items-center justify-between text-[11px] text-slate-500">
+                    <span>{item.label}</span>
+                    <span className={`font-semibold ${item.text}`}>
+                      {formatCurrency(item.value)}
+                    </span>
+                  </div>
+                  <div className="h-1.5 rounded-full bg-slate-100">
+                    <div
+                      className={`h-full rounded-full ${item.color}`}
+                      style={{
+                        width: `${Math.min(
+                          100,
+                          (item.value / cashFlowMax) * 100,
+                        )}%`,
+                      }}
+                    />
+                  </div>
                 </div>
-                <div className="h-2 rounded-full bg-slate-100">
-                  <div
-                    className={`h-full rounded-full ${item.color}`}
-                    style={{
-                      width: `${Math.min(
-                        100,
-                        (item.value / cashFlowMax) * 100,
-                      )}%`,
-                    }}
-                  />
-                </div>
-              </div>
-            ))}
-          </div>
-          <div className="mt-4 rounded-lg border border-dashed border-slate-200 bg-white px-3 py-2 text-xs text-slate-600">
-            Track expenses daily to keep cash flow positive.
-          </div>
-        </div>
+              ))}
+            </div>
+            <div className="rounded-lg border border-dashed border-slate-200 bg-white px-3 py-2 text-xs text-slate-600">
+              Track expenses daily to keep cash flow positive.
+            </div>
+          </CardContent>
+        </Card>
       ) : null}
 
       {/* Tables */}
       {snapshot && (
         <div className="grid gap-4 lg:grid-cols-2">
           {/* Per-session */}
-          <div className={PANEL_CLASS}>
-            <div className="border-b border-slate-200 bg-slate-50 px-3 py-2 text-xs font-semibold uppercase tracking-wide text-slate-600">
-              Per live session performance
-            </div>
-            {snapshot.topSessions.length === 0 ? (
-              <div className="px-3 py-3 text-sm text-slate-600">
-                Walang sales pa in this period.
-              </div>
-            ) : (
-              <div className="max-h-[260px] overflow-y-auto">
-                <table className="min-w-full text-left text-xs">
-                  <thead className="border-b border-slate-200 bg-slate-50 text-[11px] uppercase text-slate-600">
-                    <tr>
-                      <th className="px-3 py-2">Session</th>
-                      <th className="px-3 py-2 text-right">Revenue</th>
-                      <th className="px-3 py-2 text-right">Profit</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {snapshot.topSessions.map((s) => (
-                      <tr
-                        key={s.liveSessionId}
-                        className="border-t border-slate-200"
-                      >
-                        <td className="px-3 py-2 text-[11px] text-slate-900">
-                          {s.title}
-                        </td>
-                        <td className="px-3 py-2 text-right text-[11px] text-slate-900">
-                          {formatCurrency(s.revenue)}
-                        </td>
-                        <td className="px-3 py-2 text-right text-[11px] text-emerald-600">
-                          {formatCurrency(s.profit)}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            )}
-          </div>
+          <Card>
+            <CardHeader className="items-start">
+              <CardTitle>Per live session performance</CardTitle>
+              <CardHint>Revenue and profit per session.</CardHint>
+            </CardHeader>
+            <CardContent className="p-0">
+              {snapshot.topSessions.length === 0 ? (
+                <div className="px-4 py-4 text-sm text-slate-600">
+                  Walang sales pa in this period.
+                </div>
+              ) : (
+                <div className="max-h-[260px] overflow-y-auto">
+                  <div className="overflow-x-auto">
+                    <table className="min-w-full text-left text-xs">
+                      <thead className="border-b border-slate-200 bg-slate-50 text-xs uppercase tracking-wide text-slate-500">
+                        <tr>
+                          <th className="px-4 py-2">Session</th>
+                          <th className="px-4 py-2 text-right">Revenue</th>
+                          <th className="px-4 py-2 text-right">Profit</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {snapshot.topSessions.map((s) => (
+                          <tr
+                            key={s.liveSessionId}
+                            className="border-t border-slate-200 hover:bg-slate-50"
+                          >
+                            <td className="px-4 py-2 text-[11px] text-slate-900">
+                              {s.title}
+                            </td>
+                            <td className="px-4 py-2 text-right text-[11px] text-slate-900">
+                              {formatCurrency(s.revenue)}
+                            </td>
+                            <td className="px-4 py-2 text-right text-[11px] text-emerald-600">
+                              {formatCurrency(s.profit)}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              )}
+            </CardContent>
+          </Card>
 
           {/* Per-product */}
-          <div className={PANEL_CLASS}>
-            <div className="border-b border-slate-200 bg-slate-50 px-3 py-2 text-xs font-semibold uppercase tracking-wide text-slate-600">
-              Per product performance
-            </div>
-            {snapshot.topProducts.length === 0 ? (
-              <div className="px-3 py-3 text-sm text-slate-600">
-                Walang benta pa per item in this period.
-              </div>
-            ) : (
-              <div className="max-h-[260px] overflow-y-auto">
-                <table className="min-w-full text-left text-xs">
-                  <thead className="border-b border-slate-200 bg-slate-50 text-[11px] uppercase text-slate-600">
-                    <tr>
-                      <th className="px-3 py-2">Item</th>
-                      <th className="px-3 py-2 text-right">Qty</th>
-                      <th className="px-3 py-2 text-right">Revenue</th>
-                      <th className="px-3 py-2 text-right">Profit</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {snapshot.topProducts.map((p) => (
-                      <tr
-                        key={p.itemCode + p.name}
-                        className="border-t border-slate-200"
-                      >
-                        <td className="px-3 py-2 text-[11px] text-slate-900">
-                          <span className="font-mono text-[10px] text-slate-500">
-                            {p.itemCode}
-                          </span>{" "}
-                          {p.name}
-                        </td>
-                        <td className="px-3 py-2 text-right text-[11px] text-slate-900">
-                          {p.qtySold}
-                        </td>
-                        <td className="px-3 py-2 text-right text-[11px] text-slate-900">
-                          {formatCurrency(p.revenue)}
-                        </td>
-                        <td className="px-3 py-2 text-right text-[11px] text-emerald-600">
-                          {formatCurrency(p.profit)}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            )}
-          </div>
+          <Card>
+            <CardHeader className="items-start">
+              <CardTitle>Per product performance</CardTitle>
+              <CardHint>Top items by revenue and profit.</CardHint>
+            </CardHeader>
+            <CardContent className="p-0">
+              {snapshot.topProducts.length === 0 ? (
+                <div className="px-4 py-4 text-sm text-slate-600">
+                  Walang benta pa per item in this period.
+                </div>
+              ) : (
+                <div className="max-h-[260px] overflow-y-auto">
+                  <div className="overflow-x-auto">
+                    <table className="min-w-full text-left text-xs">
+                      <thead className="border-b border-slate-200 bg-slate-50 text-xs uppercase tracking-wide text-slate-500">
+                        <tr>
+                          <th className="px-4 py-2">Item</th>
+                          <th className="px-4 py-2 text-right">Qty</th>
+                          <th className="px-4 py-2 text-right">Revenue</th>
+                          <th className="px-4 py-2 text-right">Profit</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {snapshot.topProducts.map((p) => (
+                          <tr
+                            key={p.itemCode + p.name}
+                            className="border-t border-slate-200 hover:bg-slate-50"
+                          >
+                            <td className="px-4 py-2 text-[11px] text-slate-900">
+                              <span className="font-mono text-[10px] text-slate-500">
+                                {p.itemCode}
+                              </span>{" "}
+                              {p.name}
+                            </td>
+                            <td className="px-4 py-2 text-right text-[11px] text-slate-900">
+                              {p.qtySold}
+                            </td>
+                            <td className="px-4 py-2 text-right text-[11px] text-slate-900">
+                              {formatCurrency(p.revenue)}
+                            </td>
+                            <td className="px-4 py-2 text-right text-[11px] text-emerald-600">
+                              {formatCurrency(p.profit)}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              )}
+            </CardContent>
+          </Card>
         </div>
       )}
-    </div>
+    </Page>
   );
 }
