@@ -1022,6 +1022,14 @@ export function OrdersPage() {
 
   async function openInvoicePdf() {
     if (!selectedDetail) return;
+
+    const win = window.open("", "_blank");
+    if (!win) {
+      setReceiptMessage("Please allow pop-ups to open the invoice.");
+      setTimeout(() => setReceiptMessage(null), 2500);
+      return;
+    }
+
     const order = selectedDetail.order;
     const customerName = formatCustomerLabel(
       order.customerId,
@@ -1049,54 +1057,50 @@ export function OrdersPage() {
       const uniqueMethods = Array.from(new Set(postedMethods));
       paymentMethod = uniqueMethods.length ? uniqueMethods.join(", ") : "-";
       shippingCourier = shipment?.courier?.trim() || "-";
+
+      const html = buildInvoiceHtml({
+        template: invoiceTemplate,
+        logoUrl,
+        businessName,
+        contactEmail,
+        contactPhone,
+        paymentMethod,
+        shippingCourier,
+        order,
+        customerName,
+        customerLocation,
+        discounts,
+        shipping,
+        vatEnabled: taxConfig.enabled,
+        vatRatePct: taxConfig.ratePct,
+        vatAmount: vatAmountValue,
+        netOfVat: vatNetValue,
+        lines: selectedDetail.lines,
+      });
+
+      win.document.open();
+      win.document.write(html);
+      win.document.close();
+      win.focus();
+
+      let printed = false;
+      const printOnce = () => {
+        if (printed) return;
+        printed = true;
+        win.print();
+      };
+
+      win.onload = printOnce;
+      setTimeout(printOnce, 500);
+
+      setReceiptMessage("Invoice opened. Use Print to save as PDF.");
+      setTimeout(() => setReceiptMessage(null), 2500);
     } catch (err) {
       console.error(err);
-    }
-
-    const html = buildInvoiceHtml({
-      template: invoiceTemplate,
-      logoUrl,
-      businessName,
-      contactEmail,
-      contactPhone,
-      paymentMethod,
-      shippingCourier,
-      order,
-      customerName,
-      customerLocation,
-      discounts,
-      shipping,
-      vatEnabled: taxConfig.enabled,
-      vatRatePct: taxConfig.ratePct,
-      vatAmount: vatAmountValue,
-      netOfVat: vatNetValue,
-      lines: selectedDetail.lines,
-    });
-
-    const win = window.open("", "_blank");
-    if (!win) {
-      setReceiptMessage("Please allow pop-ups to open the invoice.");
+      win.close();
+      setReceiptMessage("Invoice generation failed. Try again.");
       setTimeout(() => setReceiptMessage(null), 2500);
-      return;
     }
-
-    win.document.open();
-    win.document.write(html);
-    win.document.close();
-    win.focus();
-
-    let printed = false;
-    const printOnce = () => {
-      if (printed) return;
-      printed = true;
-      win.print();
-    };
-
-    win.onload = printOnce;
-    setTimeout(printOnce, 500);
-
-    setReceiptMessage("Invoice opened. Use Print to save as PDF.");
-    setTimeout(() => setReceiptMessage(null), 2500);
   }
 
   return (
