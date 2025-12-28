@@ -1023,13 +1023,6 @@ export function OrdersPage() {
   async function openInvoicePdf() {
     if (!selectedDetail) return;
 
-    const win = window.open("", "_blank");
-    const invoiceBlocked = !win;
-    if (invoiceBlocked) {
-      setReceiptMessage("Popup blocked. Opening invoice in this tab.");
-      setTimeout(() => setReceiptMessage(null), 2500);
-    }
-
     const order = selectedDetail.order;
     const customerName = formatCustomerLabel(
       order.customerId,
@@ -1078,33 +1071,11 @@ export function OrdersPage() {
         lines: selectedDetail.lines,
       });
 
-      if (invoiceBlocked) {
-        return openInvoiceInCurrentTab(html);
-      }
-
-      if (!win) return;
-      win.document.open();
-      win.document.write(html);
-      win.document.close();
-      win.focus();
-
-      let printed = false;
-      const printOnce = () => {
-        if (printed) return;
-        printed = true;
-        win.print();
-      };
-
-      win.onload = printOnce;
-      setTimeout(printOnce, 500);
-
+      openInvoiceInCurrentTab(html);
       setReceiptMessage("Invoice opened. Use Print to save as PDF.");
       setTimeout(() => setReceiptMessage(null), 2500);
     } catch (err) {
       console.error(err);
-      if (win) {
-        win.close();
-      }
       setReceiptMessage("Invoice generation failed. Try again.");
       setTimeout(() => setReceiptMessage(null), 2500);
     }
