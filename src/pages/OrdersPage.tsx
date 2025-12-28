@@ -13,7 +13,8 @@ import {
 } from "../services/orders.service";
 import { listClaimsForSession } from "../services/claims.service";
 import { listCustomerBasics } from "../services/customers.service";
-import { openInvoiceSameTab } from "../services/invoices.service";
+import { listPaymentsForOrder } from "../services/payments.service";
+import { getShipmentForOrder } from "../services/shipments.service";
 import { type InvoiceTemplate } from "../services/settings.service";
 import { useAppSettings } from "../hooks/useAppSettings";
 import { useNotification } from "../hooks/useNotification";
@@ -570,8 +571,6 @@ function buildInvoiceHtml(params: {
 </html>`;
 }
 
-void buildInvoiceHtml;
-
 function paymentLabel(status: PaymentStatus) {
   switch (status) {
     case "UNPAID":
@@ -965,10 +964,8 @@ export function OrdersPage() {
   const contactEmail = settings?.contactEmail?.trim() || "Not set";
   const contactPhone = settings?.contactPhone?.trim() || "Not set";
   const logoUrl = settings?.logoUrl?.trim() || "";
-  void logoUrl;
   const invoiceTemplate = (settings?.invoiceTemplate ??
     "EMERALD") as InvoiceTemplate;
-  void invoiceTemplate;
   const taxConfig = {
     enabled: settings?.taxIncludedEnabled ?? false,
     ratePct: settings?.taxIncludedRatePct ?? 12,
@@ -1025,8 +1022,56 @@ export function OrdersPage() {
 
   async function openInvoicePdf() {
     if (!selectedDetail) return;
+
+    const order = selectedDetail.order;
+    const customerName = formatCustomerLabel(
+      order.customerId,
+      selectedDetail.customer?.displayName ??
+        customerMap[order.customerId ?? ""]?.displayName,
+    );
+    const customerLocation = [
+      selectedDetail.customer?.city,
+      selectedDetail.customer?.province,
+    ].filter(Boolean) as string[];
+    const discounts =
+      (order.discountTotal ?? 0) + (order.promoDiscountTotal ?? 0);
+    const shipping = (order.shippingFee ?? 0) + (order.codFee ?? 0);
+    let paymentMethod = "-";
+    let shippingCourier = "-";
+
     try {
-      await openInvoiceSameTab(selectedDetail.order.id);
+      const [payments, shipment] = await Promise.all([
+        listPaymentsForOrder(order.id),
+        getShipmentForOrder(order.id),
+      ]);
+      const postedMethods = payments
+        .filter((p) => p.status === "POSTED")
+        .map((p) => p.method);
+      const uniqueMethods = Array.from(new Set(postedMethods));
+      paymentMethod = uniqueMethods.length ? uniqueMethods.join(", ") : "-";
+      shippingCourier = shipment?.courier?.trim() || "-";
+
+      const html = buildInvoiceHtml({
+        template: invoiceTemplate,
+        logoUrl,
+        businessName,
+        contactEmail,
+        contactPhone,
+        paymentMethod,
+        shippingCourier,
+        order,
+        customerName,
+        customerLocation,
+        discounts,
+        shipping,
+        vatEnabled: taxConfig.enabled,
+        vatRatePct: taxConfig.ratePct,
+        vatAmount: vatAmountValue,
+        netOfVat: vatNetValue,
+        lines: selectedDetail.lines,
+      });
+
+      openInvoiceInCurrentTab(html);
       setReceiptMessage("Invoice opened. Use Print to save as PDF.");
       setTimeout(() => setReceiptMessage(null), 2500);
     } catch (err) {
@@ -1034,6 +1079,13 @@ export function OrdersPage() {
       setReceiptMessage("Invoice generation failed. Try again.");
       setTimeout(() => setReceiptMessage(null), 2500);
     }
+  }
+
+  function openInvoiceInCurrentTab(html: string) {
+    const blob = new Blob([html], { type: "text/html" });
+    const url = URL.createObjectURL(blob);
+    window.location.assign(url);
+    setTimeout(() => URL.revokeObjectURL(url), 5000);
   }
 
   return (
