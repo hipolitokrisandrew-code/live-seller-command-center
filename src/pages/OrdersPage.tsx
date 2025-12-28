@@ -1024,10 +1024,10 @@ export function OrdersPage() {
     if (!selectedDetail) return;
 
     const win = window.open("", "_blank");
-    if (!win) {
-      setReceiptMessage("Please allow pop-ups to open the invoice.");
+    const invoiceBlocked = !win;
+    if (invoiceBlocked) {
+      setReceiptMessage("Popup blocked. Opening invoice in this tab.");
       setTimeout(() => setReceiptMessage(null), 2500);
-      return;
     }
 
     const order = selectedDetail.order;
@@ -1078,6 +1078,11 @@ export function OrdersPage() {
         lines: selectedDetail.lines,
       });
 
+      if (invoiceBlocked) {
+        return openInvoiceInCurrentTab(html);
+      }
+
+      if (!win) return;
       win.document.open();
       win.document.write(html);
       win.document.close();
@@ -1097,10 +1102,19 @@ export function OrdersPage() {
       setTimeout(() => setReceiptMessage(null), 2500);
     } catch (err) {
       console.error(err);
-      win.close();
+      if (win) {
+        win.close();
+      }
       setReceiptMessage("Invoice generation failed. Try again.");
       setTimeout(() => setReceiptMessage(null), 2500);
     }
+  }
+
+  function openInvoiceInCurrentTab(html: string) {
+    const blob = new Blob([html], { type: "text/html" });
+    const url = URL.createObjectURL(blob);
+    window.location.assign(url);
+    setTimeout(() => URL.revokeObjectURL(url), 5000);
   }
 
   return (
