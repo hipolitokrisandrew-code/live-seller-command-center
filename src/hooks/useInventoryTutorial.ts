@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 
 export type InventoryTutorialStep = {
   id: string;
@@ -117,31 +117,22 @@ export function useInventoryTutorial() {
     []
   );
 
-  const [isOpen, setIsOpen] = useState(false);
-  const [currentStep, setCurrentStep] = useState(0);
-  const [hasSeen, setHasSeen] = useState(() => readSeenFlag());
+  const startIndex = useMemo(() => {
+    const idx = steps.findIndex((step) => step.id === "inventory-add");
+    return idx >= 0 ? idx : 0;
+  }, [steps]);
+
+  const initialSeen = readSeenFlag();
+  const [isOpen, setIsOpen] = useState(() => !initialSeen);
+  const [currentStep, setCurrentStep] = useState(startIndex);
 
   const markSeen = useCallback(() => {
-    setHasSeen(true);
     try {
       localStorage.setItem(STORAGE_KEY, "true");
     } catch {
       /* ignore */
     }
   }, []);
-
-  const startIndex = useMemo(() => {
-    const idx = steps.findIndex((step) => step.id === "inventory-add");
-    return idx >= 0 ? idx : 0;
-  }, [steps]);
-
-  // Auto-open on first visit to Inventory.
-  useEffect(() => {
-    if (!hasSeen) {
-      setCurrentStep(startIndex);
-      setIsOpen(true);
-    }
-  }, [hasSeen, startIndex]);
 
   const open = useCallback(() => {
     setIsOpen(true);

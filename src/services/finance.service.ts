@@ -41,6 +41,15 @@ function safeNumber(value: unknown): number {
   return Number.isFinite(n) ? n : 0;
 }
 
+function resolveCostPrice(item: InventoryItem | undefined, variantId?: string) {
+  if (!item) return 0;
+  const variant =
+    variantId && item.variants
+      ? item.variants.find((v) => v.id === variantId)
+      : undefined;
+  return safeNumber(variant?.costPrice ?? item.costPrice);
+}
+
 async function loadCoreData() {
   const [orders, orderLines, inventory, payments, shipments, sessions] =
     await Promise.all([
@@ -142,7 +151,7 @@ export async function getFinanceSnapshotForRange(
     const key = line.inventoryItemId;
     const revenue = safeNumber(line.lineTotal);
     const qty = safeNumber(line.quantity);
-    const costPrice = safeNumber(item?.costPrice);
+    const costPrice = resolveCostPrice(item, line.variantId);
     const cost = costPrice * qty;
     const profit = revenue - cost;
 
@@ -323,7 +332,7 @@ export async function getFinanceSnapshotForLiveSession(
     const key = line.inventoryItemId;
     const revenue = safeNumber(line.lineTotal);
     const qty = safeNumber(line.quantity);
-    const costPrice = safeNumber(item?.costPrice);
+    const costPrice = resolveCostPrice(item, line.variantId);
     const cost = costPrice * qty;
     const profit = revenue - cost;
 

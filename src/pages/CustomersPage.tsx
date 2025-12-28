@@ -14,6 +14,9 @@ import {
   CardTitle,
 } from "../components/ui/Card";
 import { useScrollRetention } from "../hooks/useScrollRetention";
+import { useCustomersTutorial } from "../hooks/useCustomersTutorial";
+import { CustomersTutorialOverlay } from "../components/customers/CustomersTutorialOverlay";
+import { CustomersHelpButton } from "../components/customers/CustomersHelpButton";
 
 type JoyFilter = "ALL" | "JOY_ONLY";
 
@@ -123,6 +126,7 @@ function orderStatusBadgeVariant(
 }
 
 export function CustomersPage() {
+  const tutorial = useCustomersTutorial();
   const [search, setSearch] = useState("");
   const [joyFilter, setJoyFilter] = useState<JoyFilter>("ALL");
 
@@ -226,7 +230,7 @@ export function CustomersPage() {
 
   return (
     <Page className="space-y-6">
-      <div className="grid gap-2 sm:grid-cols-3">
+      <div className="grid gap-2 sm:grid-cols-3" data-tour="customers-stats">
         <Card className="p-3">
           <div className="text-xs font-medium text-slate-600">
             Total customers
@@ -241,6 +245,7 @@ export function CustomersPage() {
             {joyCount}
           </div>
         </Card>
+
         <Card className="p-3">
           <div className="text-xs font-medium text-slate-600">Total spent</div>
           <div className="mt-1 text-base font-semibold tabular-nums text-emerald-700">
@@ -252,7 +257,10 @@ export function CustomersPage() {
       <div className="grid gap-6 lg:grid-cols-12">
         {/* Left: list */}
         <Card className="overflow-hidden lg:col-span-5">
-          <CardHeader className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <CardHeader
+            className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between"
+            data-tour="customers-list-filters"
+          >
             <div className="flex-1">
               <input
                 type="text"
@@ -295,7 +303,11 @@ export function CustomersPage() {
           )}
 
           {hasCustomers && (
-            <div ref={customersListRef} className="max-h-[420px] overflow-y-auto">
+            <div
+              ref={customersListRef}
+              className="max-h-[420px] overflow-y-auto"
+              data-tour="customers-list"
+            >
               <div className="overflow-x-auto">
                 <table className="min-w-full text-left text-xs">
                   <thead className={`${TABLE_HEAD_CLASS} sticky top-0`}>
@@ -360,7 +372,10 @@ export function CustomersPage() {
         </Card>
 
         {/* Right: detail */}
-        <Card className="overflow-hidden lg:col-span-7">
+        <Card
+          className="overflow-hidden lg:col-span-7"
+          data-tour="customers-detail"
+        >
           <CardHeader>
             <CardTitle>Customer details &amp; history</CardTitle>
           </CardHeader>
@@ -411,7 +426,10 @@ export function CustomersPage() {
                 </div>
               </div>
 
-              <div className="grid gap-3 sm:grid-cols-3">
+              <div
+                className="grid gap-3 sm:grid-cols-3"
+                data-tour="customers-detail-metrics"
+              >
                 <div className="rounded-lg bg-slate-50 px-3 py-2">
                   <div className="text-xs font-medium text-slate-600">
                     Total orders
@@ -438,7 +456,7 @@ export function CustomersPage() {
                 </div>
               </div>
 
-              <div className="space-y-2">
+              <div className="space-y-2" data-tour="customers-history">
                 <div className="flex items-center justify-between">
                   <div className="text-xs font-medium text-slate-600">
                     Recent orders
@@ -512,6 +530,16 @@ export function CustomersPage() {
           )}
         </Card>
       </div>
+      <CustomersHelpButton onClick={tutorial.open} />
+      <CustomersTutorialOverlay
+        isOpen={tutorial.isOpen}
+        steps={tutorial.steps}
+        currentIndex={tutorial.currentStep}
+        onNext={tutorial.next}
+        onPrev={tutorial.prev}
+        onClose={tutorial.close}
+        onSkip={tutorial.skip}
+      />
     </Page>
   );
 }

@@ -18,32 +18,46 @@ export function useScrollRetention<T extends HTMLElement>(
   deps: DependencyList
 ) {
   const ref = useRef<T | null>(null);
-  const [node, setNode] = useState<T | null>(null);
+  const [nodeVersion, setNodeVersion] = useState(0);
   const last = useRef<ScrollPos>({ top: 0, left: 0 });
+  const depsRef = useRef<DependencyList>(deps);
 
   const setRef = useCallback((next: T | null) => {
-    ref.current = next;
-    setNode(next);
+    if (ref.current !== next) {
+      ref.current = next;
+      setNodeVersion((prev) => prev + 1);
+    }
   }, []);
 
   useEffect(() => {
-    if (!node) return;
+    const current = ref.current;
+    if (!current) return;
 
     const handleScroll = () => {
-      last.current = { top: node.scrollTop, left: node.scrollLeft };
+      last.current = { top: current.scrollTop, left: current.scrollLeft };
     };
 
-    node.addEventListener("scroll", handleScroll);
-    return () => node.removeEventListener("scroll", handleScroll);
-  }, [node]);
+    current.addEventListener("scroll", handleScroll);
+    return () => current.removeEventListener("scroll", handleScroll);
+  }, [nodeVersion]);
 
   useLayoutEffect(() => {
+    const prevDeps = depsRef.current;
+    const depsChanged =
+      prevDeps.length !== deps.length ||
+      deps.some((dep, index) => !Object.is(dep, prevDeps[index]));
+
+    depsRef.current = deps;
+
     if (!shouldRestore) return;
     const current = ref.current;
     if (!current) return;
+    if (!depsChanged) return;
+
+    // Mutating DOM scroll props is necessary to restore the saved position.
     current.scrollTop = last.current.top;
     current.scrollLeft = last.current.left;
-  }, [shouldRestore, ...deps]);
+  }, [shouldRestore, nodeVersion, deps]);
 
   return setRef;
 }

@@ -34,6 +34,24 @@ import { useScrollRetention } from "../hooks/useScrollRetention";
 
 type StatusFilter = "ALL" | Claim["status"];
 
+const STATUS_FILTERS: StatusFilter[] = [
+  "ALL",
+  "PENDING",
+  "ACCEPTED",
+  "WAITLIST",
+  "REJECTED",
+  "CANCELLED",
+];
+
+const STATUS_DESCRIPTIONS: Record<StatusFilter, string> = {
+  ALL: "Show every claim recorded for the current session.",
+  PENDING: "New claims that still need to be accepted or reviewed.",
+  ACCEPTED: "Claims that were accepted and are ready for order/payment work.",
+  WAITLIST: "Claims queued on a waitlist while we sort stock or approvals.",
+  REJECTED: "Claims that have been declined for timing, stock, or policy reasons.",
+  CANCELLED: "Claims that were cancelled, joy reserved, or otherwise withdrawn.",
+};
+
 interface ClaimFormState {
   temporaryName: string;
   inventoryItemId: string;
@@ -610,10 +628,11 @@ export function ClaimsPage() {
                   Hide cancelled / joy reserve
                 </label>
               </div>
+              <p className="text-xs text-slate-500">
+                Use these chips to show every claim or to focus on Pending, Accepted, Waitlist, Rejected, or Cancelled entries.
+              </p>
               <div className="flex max-w-full gap-2 overflow-x-auto pb-1">
-                {(
-                  ["ALL", "PENDING", "ACCEPTED", "WAITLIST", "REJECTED", "CANCELLED"] as const
-                ).map((s) => {
+                {STATUS_FILTERS.map((s) => {
                   const count =
                     s === "ALL" ? claims.length : statusCounts[s as Claim["status"]] ?? 0;
                   const active = statusFilter === s;
@@ -624,7 +643,8 @@ export function ClaimsPage() {
                       key={s}
                       size="sm"
                       variant="secondary"
-                      onClick={() => setStatusFilter(s as StatusFilter)}
+                      onClick={() => setStatusFilter(s)}
+                      title={STATUS_DESCRIPTIONS[s]}
                       className={cn(
                         "rounded-full font-medium",
                         active

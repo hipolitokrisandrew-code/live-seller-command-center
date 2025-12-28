@@ -1,4 +1,11 @@
-import { useEffect, useMemo, useState, type ReactNode } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ReactNode,
+} from "react";
 import { NavLink, Outlet, useLocation } from "react-router-dom";
 import { useAppSettings } from "../hooks/useAppSettings";
 
@@ -14,7 +21,13 @@ const NAV_ITEMS: NavItem[] = [
     to: "/",
     label: "Dashboard",
     icon: (
-      <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="1.8">
+      <svg
+        viewBox="0 0 24 24"
+        className="h-5 w-5"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.8"
+      >
         <path d="M4 13h7V4H4v9zM13 20h7v-7h-7v7zM13 11h7V4h-7v7zM4 20h7v-5H4v5z" />
       </svg>
     ),
@@ -23,7 +36,13 @@ const NAV_ITEMS: NavItem[] = [
     to: "/inventory",
     label: "Inventory",
     icon: (
-      <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="1.8">
+      <svg
+        viewBox="0 0 24 24"
+        className="h-5 w-5"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.8"
+      >
         <path d="M4 7l8-4 8 4-8 4-8-4z" />
         <path d="M4 7v10l8 4 8-4V7" />
       </svg>
@@ -33,7 +52,13 @@ const NAV_ITEMS: NavItem[] = [
     to: "/live-sessions",
     label: "Live Sessions",
     icon: (
-      <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="1.8">
+      <svg
+        viewBox="0 0 24 24"
+        className="h-5 w-5"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.8"
+      >
         <path d="M5 6h14v12H5z" />
         <path d="M9 9l6 3-6 3V9z" />
       </svg>
@@ -43,7 +68,13 @@ const NAV_ITEMS: NavItem[] = [
     to: "/claims",
     label: "Claims",
     icon: (
-      <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="1.8">
+      <svg
+        viewBox="0 0 24 24"
+        className="h-5 w-5"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.8"
+      >
         <path d="M7 4h10l3 4v12H7z" />
         <path d="M7 8h13" />
         <path d="M10 12h7" />
@@ -54,7 +85,13 @@ const NAV_ITEMS: NavItem[] = [
     to: "/orders",
     label: "Orders",
     icon: (
-      <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="1.8">
+      <svg
+        viewBox="0 0 24 24"
+        className="h-5 w-5"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.8"
+      >
         <path d="M4 6h16v12H4z" />
         <path d="M4 10h16" />
         <path d="M8 14h4" />
@@ -65,7 +102,13 @@ const NAV_ITEMS: NavItem[] = [
     to: "/payments-shipping",
     label: "Payments & Shipping",
     icon: (
-      <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="1.8">
+      <svg
+        viewBox="0 0 24 24"
+        className="h-5 w-5"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.8"
+      >
         <path d="M3 7h18v10H3z" />
         <path d="M7 7V5h10v2" />
         <path d="M7 13h6" />
@@ -76,7 +119,13 @@ const NAV_ITEMS: NavItem[] = [
     to: "/customers",
     label: "Customers",
     icon: (
-      <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="1.8">
+      <svg
+        viewBox="0 0 24 24"
+        className="h-5 w-5"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.8"
+      >
         <path d="M8 14a4 4 0 1 1 0-8 4 4 0 0 1 0 8z" />
         <path d="M16 12a3 3 0 1 1 0-6 3 3 0 0 1 0 6z" />
         <path d="M2 20c0-3.3 3.6-6 8-6" />
@@ -88,7 +137,13 @@ const NAV_ITEMS: NavItem[] = [
     to: "/finance",
     label: "Finance",
     icon: (
-      <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="1.8">
+      <svg
+        viewBox="0 0 24 24"
+        className="h-5 w-5"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.8"
+      >
         <path d="M4 19h16" />
         <path d="M6 17l4-6 4 4 4-7" />
       </svg>
@@ -98,7 +153,13 @@ const NAV_ITEMS: NavItem[] = [
     to: "/settings",
     label: "Settings",
     icon: (
-      <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="1.8">
+      <svg
+        viewBox="0 0 24 24"
+        className="h-5 w-5"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.8"
+      >
         <path d="M12 8a4 4 0 1 1 0 8 4 4 0 0 1 0-8z" />
         <path d="M4 12h2m12 0h2M12 4v2m0 12v2M6.5 6.5l1.5 1.5m8 8 1.5 1.5M17.5 6.5L16 8m-8 8-1.5 1.5" />
       </svg>
@@ -157,11 +218,23 @@ export default function MainLayout() {
   const location = useLocation();
   const [isSidebarExpanded, setIsSidebarExpanded] = useState(true);
   const [isMobileNavOpen, setIsMobileNavOpen] = useState(false);
+  const prevPathRef = useRef(location.pathname);
+
+  const closeMobileNav = useCallback(() => {
+    setIsMobileNavOpen(false);
+  }, []);
 
   // Close the mobile drawer whenever the route changes.
+  // This is intentional UI sync; we only update state if it's currently open.
   useEffect(() => {
-    setIsMobileNavOpen(false);
-  }, [location.pathname]);
+    const prevPath = prevPathRef.current;
+    if (prevPath === location.pathname) return;
+    prevPathRef.current = location.pathname;
+    const frame = window.requestAnimationFrame(() => {
+      closeMobileNav();
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [location.pathname, closeMobileNav]);
 
   const businessName =
     settings?.businessName?.trim() || "Live Seller Command Center";
@@ -196,7 +269,7 @@ export default function MainLayout() {
       return {
         label: "Claims",
         subtitle:
-          "Dito mo ita-type ang \"mine\" claims ng customers habang live. Auto-accept / waitlist / reject based sa stock.",
+          'Dito mo ita-type ang "mine" claims ng customers habang live. Auto-accept / waitlist / reject based sa stock.',
       };
     }
     if (path.startsWith("/orders")) {
@@ -259,73 +332,66 @@ export default function MainLayout() {
     <div className="min-h-screen bg-slate-50 text-slate-900">
       <div className="flex min-h-screen">
         {/* Mobile drawer: uses overlay + slide-in panel for small screens. */}
-        <div
-          className={`fixed inset-0 z-40 lg:hidden ${
-            isMobileNavOpen ? "" : "pointer-events-none"
-          }`}
-        >
-          <div
-            className={`absolute inset-0 bg-slate-900/30 transition-opacity ${
-              isMobileNavOpen ? "opacity-100" : "opacity-0"
-            }`}
-            onClick={() => setIsMobileNavOpen(false)}
-          />
-          <aside
-            className={`absolute left-0 top-0 h-full w-64 border-r border-slate-200 bg-white shadow-lg transition-transform ${
-              isMobileNavOpen ? "translate-x-0" : "-translate-x-full"
-            }`}
-          >
-            <div className="flex items-center justify-between border-b border-slate-200 px-4 py-4">
-              <div className="flex items-center gap-3">
-                <div className="flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-full bg-emerald-500 text-xs font-bold text-slate-950">
-                  {logoUrl ? (
-                    <img
-                      src={logoUrl}
-                      alt={`${businessName} logo`}
-                      className="h-full w-full rounded-full object-cover"
-                    />
-                  ) : (
-                    displayLogoText
-                  )}
+        {isMobileNavOpen && (
+          <div className="fixed inset-0 z-40 lg:hidden">
+            <div
+              className="absolute inset-0 bg-slate-900/30 opacity-100 transition-opacity"
+              onClick={closeMobileNav}
+            />
+            <aside className="absolute left-0 top-0 h-full w-64 border-r border-slate-200 bg-white shadow-lg transition-transform translate-x-0">
+              <div className="flex items-center justify-between border-b border-slate-200 px-4 py-4">
+                <div className="flex items-center gap-3">
+                  <div className="flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-full bg-emerald-500 text-xs font-bold text-slate-950">
+                    {logoUrl ? (
+                      <img
+                        src={logoUrl}
+                        alt={`${businessName} logo`}
+                        className="h-full w-full rounded-full object-cover"
+                      />
+                    ) : (
+                      displayLogoText
+                    )}
+                  </div>
+                  <div className="flex flex-col">
+                    <span className="text-[11px] font-medium uppercase tracking-[0.16em] text-slate-500">
+                      Live Seller Command Center
+                    </span>
+                    <span className="max-w-36 truncate text-sm font-semibold text-slate-900">
+                      {businessName}
+                    </span>
+                  </div>
                 </div>
-                <div className="flex flex-col">
-                  <span className="text-[11px] font-medium uppercase tracking-[0.16em] text-slate-500">
-                    Live Seller Command Center
-                  </span>
-                  <span className="max-w-36 truncate text-sm font-semibold text-slate-900">
-                    {businessName}
-                  </span>
-                </div>
-              </div>
-              <button
-                type="button"
-                onClick={() => setIsMobileNavOpen(false)}
-                className="inline-flex h-9 w-9 items-center justify-center rounded-md border border-slate-200 text-slate-600 transition hover:bg-slate-100 hover:text-slate-900"
-                aria-label="Close menu"
-              >
-                <svg
-                  aria-hidden="true"
-                  viewBox="0 0 24 24"
-                  className="h-5 w-5"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="2"
-                  strokeLinecap="round"
+                <button
+                  type="button"
+                  onClick={closeMobileNav}
+                  className="inline-flex h-9 w-9 items-center justify-center rounded-md border border-slate-200 text-slate-600 transition hover:bg-slate-100 hover:text-slate-900"
+                  aria-label="Close menu"
                 >
-                  <line x1="6" y1="6" x2="18" y2="18" />
-                  <line x1="6" y1="18" x2="18" y2="6" />
-                </svg>
-              </button>
-            </div>
-            <NavList compact={false} onNavigate={() => setIsMobileNavOpen(false)} />
-            <div className="border-t border-slate-200 px-4 py-3 text-[11px] text-slate-600">
-              <p>
-                Owner: <span className="font-medium text-slate-800">{ownerName}</span>
-              </p>
-              <p className="mt-1">Works even with weak internet.</p>
-            </div>
-          </aside>
-        </div>
+                  <svg
+                    aria-hidden="true"
+                    viewBox="0 0 24 24"
+                    className="h-5 w-5"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2"
+                    strokeLinecap="round"
+                  >
+                    <line x1="6" y1="6" x2="18" y2="18" />
+                    <line x1="6" y1="18" x2="18" y2="6" />
+                  </svg>
+                </button>
+              </div>
+              <NavList compact={false} onNavigate={closeMobileNav} />
+              <div className="border-t border-slate-200 px-4 py-3 text-[11px] text-slate-600">
+                <p>
+                  Owner:{" "}
+                  <span className="font-medium text-slate-800">{ownerName}</span>
+                </p>
+                <p className="mt-1">Works even with weak internet.</p>
+              </div>
+            </aside>
+          </div>
+        )}
 
         {/* Desktop sidebar: collapsible rail to save horizontal space. */}
         <aside
@@ -399,7 +465,8 @@ export default function MainLayout() {
           {isSidebarExpanded ? (
             <div className="border-t border-slate-200 px-4 py-3 text-[11px] text-slate-600">
               <p>
-                Owner: <span className="font-medium text-slate-800">{ownerName}</span>
+                Owner:{" "}
+                <span className="font-medium text-slate-800">{ownerName}</span>
               </p>
               <p className="mt-1">Works even with weak internet.</p>
             </div>
@@ -407,13 +474,13 @@ export default function MainLayout() {
         </aside>
 
         {/* Main content area: full width, responsive padding. */}
-        <div className="flex min-w-0 flex-1 flex-col">
-          <header className="flex items-center justify-between gap-4 border-b border-slate-200 bg-white px-4 py-3 md:px-6">
+        <div className="flex min-w-0 flex-1 flex-col relative z-0">
+          <header className="sticky top-0 z-50 flex items-center justify-between gap-4 border-b border-slate-200 bg-white px-4 py-3 shadow-sm shadow-slate-900/5 backdrop-blur md:px-6">
             <div className="flex items-center gap-3">
               <button
                 type="button"
                 onClick={() => setIsMobileNavOpen(true)}
-                className="inline-flex h-9 w-9 items-center justify-center rounded-md border border-slate-200 text-slate-600 transition hover:bg-slate-100 hover:text-slate-900 lg:hidden"
+                className="inline-flex h-9 w-9 items-center justify-center rounded-md border border-slate-200 bg-white text-slate-600 transition hover:bg-slate-100 hover:text-slate-900 lg:hidden relative z-50 pointer-events-auto touch-manipulation"
                 aria-label="Open menu"
               >
                 <svg
@@ -435,16 +502,16 @@ export default function MainLayout() {
                   headerCopy.label === "Inventory"
                     ? "inventory-header"
                     : headerCopy.label === "Dashboard"
-                      ? "dashboard-header"
-                      : headerCopy.label === "Live Sessions"
-                        ? "live-sessions-header"
-                        : headerCopy.label === "Claims"
-                          ? "claims-header"
-                          : headerCopy.label === "Orders"
-                            ? "orders-header"
-                            : headerCopy.label === "Payments & Shipping"
-                              ? "payments-shipping-header"
-                            : undefined
+                    ? "dashboard-header"
+                    : headerCopy.label === "Live Sessions"
+                    ? "live-sessions-header"
+                    : headerCopy.label === "Claims"
+                    ? "claims-header"
+                    : headerCopy.label === "Orders"
+                    ? "orders-header"
+                    : headerCopy.label === "Payments & Shipping"
+                    ? "payments-shipping-header"
+                    : undefined
                 }
               >
                 <p className="text-xs font-medium uppercase tracking-[0.14em] text-slate-500">
@@ -462,7 +529,7 @@ export default function MainLayout() {
           </header>
 
           {/* Main content uses fluid padding instead of a max-width wrapper. */}
-          <main className="flex-1 overflow-y-auto bg-slate-50 px-4 py-4 md:px-6 md:py-6 lg:px-8 lg:py-8">
+          <main className="flex-1 overflow-y-auto bg-slate-50 px-4 py-6 md:px-6 md:py-6 lg:px-8 lg:py-8 pt-6">
             <Outlet />
           </main>
         </div>

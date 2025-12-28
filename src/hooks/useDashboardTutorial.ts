@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 
 export type DashboardTutorialStep = {
   id: string;
@@ -42,7 +42,7 @@ export function useDashboardTutorial() {
         id: "dashboard-range",
         title: "Sales date range",
         description:
-          "Piliin ang date range para sa sales summary. Other tiles are real-time.",
+          "Piliin mo yung date range para sa sales summary. Yung mga ibang tiles, real-time ang update.",
         targetSelector: '[data-tour="dashboard-range"]',
         mediaLabel: "Date range placeholder",
       },
@@ -50,7 +50,7 @@ export function useDashboardTutorial() {
         id: "dashboard-stats",
         title: "Key tiles",
         description:
-          "Tap any tile to drill down: sales, pending payments, to-ship, at low stock.",
+          "Pindutin mo yung tiles para makita ang detalye ng sales, pending payments, to-ship, at low stock.",
         targetSelector: '[data-tour="dashboard-stats"]',
         mediaLabel: "Tiles placeholder",
       },
@@ -58,7 +58,7 @@ export function useDashboardTutorial() {
         id: "dashboard-low-stock",
         title: "Low stock list",
         description:
-          "Quick view ng items na mababa na ang stock. Use Inventory to restock.",
+          "Mabilis na view ng items na mababa na ang stock. Punta ka sa Inventory para mag-restock.",
         targetSelector: '[data-tour="dashboard-low-stock"]',
         mediaLabel: "Low stock placeholder",
       },
@@ -66,7 +66,7 @@ export function useDashboardTutorial() {
         id: "dashboard-recent-sessions",
         title: "Recent live sessions",
         description:
-          "Summary ng live sessions at performance per session (revenue/profit/status).",
+          "Quick summary ng recent live sessions at performance per session—sales, profit, at status.",
         targetSelector: '[data-tour="dashboard-recent-sessions"]',
         mediaLabel: "Sessions placeholder",
       },
@@ -74,26 +74,17 @@ export function useDashboardTutorial() {
     []
   );
 
-  const [isOpen, setIsOpen] = useState(false);
+  const initialSeen = readSeenFlag();
+  const [isOpen, setIsOpen] = useState(!initialSeen);
   const [currentStep, setCurrentStep] = useState(0);
-  const [hasSeen, setHasSeen] = useState(() => readSeenFlag());
 
   const markSeen = useCallback(() => {
-    setHasSeen(true);
     try {
       localStorage.setItem(STORAGE_KEY, "true");
     } catch {
       /* ignore */
     }
   }, []);
-
-  // Auto-open on first visit to Dashboard.
-  useEffect(() => {
-    if (!hasSeen) {
-      setIsOpen(true);
-      setCurrentStep(0);
-    }
-  }, [hasSeen]);
 
   const open = useCallback(() => {
     setIsOpen(true);

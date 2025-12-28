@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 
 export type PaymentsShippingTutorialStep = {
   id: string;
@@ -97,26 +97,17 @@ export function usePaymentsShippingTutorial() {
     []
   );
 
-  const [isOpen, setIsOpen] = useState(false);
+  const initialSeen = readSeenFlag();
+  const [isOpen, setIsOpen] = useState(!initialSeen);
   const [currentStep, setCurrentStep] = useState(0);
-  const [hasSeen, setHasSeen] = useState(() => readSeenFlag());
 
   const markSeen = useCallback(() => {
-    setHasSeen(true);
     try {
       localStorage.setItem(STORAGE_KEY, "true");
     } catch {
       /* ignore */
     }
   }, []);
-
-  // Auto-open on first visit to Payments & Shipping.
-  useEffect(() => {
-    if (!hasSeen) {
-      setIsOpen(true);
-      setCurrentStep(0);
-    }
-  }, [hasSeen]);
 
   const open = useCallback(() => {
     setIsOpen(true);

@@ -165,7 +165,7 @@ export async function removeOrderLinesForClaim(claimId: string): Promise<void> {
   const claim = await db.claims.get(claimId);
 
   // Order lines carry claimId so we can find the exact line to remove.
-  let lines = await db.orderLines
+  const lines = await db.orderLines
     .filter((line) => line.claimId === claimId)
     .toArray();
 

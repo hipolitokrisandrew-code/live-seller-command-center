@@ -51,7 +51,6 @@ export function ItemSearchSelect({
   const [query, setQuery] = useState("");
   const [isOpen, setIsOpen] = useState(false);
   const [highlightIndex, setHighlightIndex] = useState(-1);
-  const prevValueRef = useRef(value);
 
   const selectedItem = useMemo(
     () => items.find((item) => item.id === value) ?? null,
@@ -60,19 +59,6 @@ export function ItemSearchSelect({
   const selectedLabel = selectedItem
     ? `${selectedItem.code} - ${selectedItem.name}`
     : "";
-
-  useEffect(() => {
-    const prevValue = prevValueRef.current;
-    prevValueRef.current = value;
-
-    if (!isOpen && selectedItem) {
-      setQuery(selectedLabel);
-    }
-
-    if (!isOpen && !value && prevValue) {
-      setQuery("");
-    }
-  }, [isOpen, selectedItem, selectedLabel, value]);
 
   // Search & filtering: case-insensitive match on code/name/category.
   const filteredItems = useMemo(() => {
@@ -88,10 +74,13 @@ export function ItemSearchSelect({
     });
   }, [items, includeOutOfStock, query]);
 
-  const visibleItems = useMemo(() => {
-    if (query.trim()) return filteredItems;
-    return filteredItems.slice(0, 8);
-  }, [filteredItems, query]);
+  const visibleItems = useMemo(() => filteredItems, [filteredItems]);
+
+  const normalizedHighlightIndex =
+    isOpen && visibleItems.length > 0
+      ? Math.min(Math.max(highlightIndex, 0), visibleItems.length - 1)
+      : -1;
+  const displayValue = isOpen ? query : selectedLabel || query;
 
   // Adjust this copy to change the empty-state messaging.
   const noResultsMessage = useMemo(() => {
@@ -105,19 +94,6 @@ export function ItemSearchSelect({
       ? "Walang in-stock item na tugma. Subukan i-toggle ang include out-of-stock items."
       : "Walang in-stock items. Subukan i-toggle ang include out-of-stock items.";
   }, [includeOutOfStock, query]);
-
-  useEffect(() => {
-    if (!isOpen) return;
-    if (visibleItems.length === 0) {
-      setHighlightIndex(-1);
-      return;
-    }
-    setHighlightIndex((prev) => {
-      if (prev < 0) return 0;
-      if (prev >= visibleItems.length) return visibleItems.length - 1;
-      return prev;
-    });
-  }, [visibleItems.length, isOpen]);
 
   useEffect(() => {
     function handleClickOutside(event: MouseEvent) {
@@ -156,9 +132,9 @@ export function ItemSearchSelect({
       return;
     }
     if (event.key === "Enter") {
-      if (isOpen && highlightIndex >= 0 && visibleItems[highlightIndex]) {
+      if (isOpen && normalizedHighlightIndex >= 0 && visibleItems[normalizedHighlightIndex]) {
         event.preventDefault();
-        handleSelect(visibleItems[highlightIndex]);
+        handleSelect(visibleItems[normalizedHighlightIndex]);
       } else {
         setIsOpen(true);
       }
@@ -183,9 +159,11 @@ export function ItemSearchSelect({
           aria-expanded={isOpen}
           aria-controls={listboxId}
           aria-activedescendant={
-            highlightIndex >= 0 ? `${listboxId}-option-${highlightIndex}` : undefined
+            normalizedHighlightIndex >= 0
+              ? `${listboxId}-option-${normalizedHighlightIndex}`
+              : undefined
           }
-          value={query}
+          value={displayValue}
           onChange={(e) => {
             const nextValue = e.target.value;
             setQuery(nextValue);
@@ -239,7 +217,7 @@ export function ItemSearchSelect({
             ) : (
               <ul id={listboxId} role="listbox" className="max-h-64 overflow-y-auto py-1">
                 {visibleItems.map((option, index) => {
-                  const isActive = index === highlightIndex;
+                  const isActive = index === normalizedHighlightIndex;
                   const stockMeta = formatStockMeta(option);
                   const isOut = option.available <= 0;
 

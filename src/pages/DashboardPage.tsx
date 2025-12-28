@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   getDashboardSummary,
   type DashboardLowStockItem,
@@ -9,22 +9,53 @@ import { Page } from "../components/layout/Page";
 import { DashboardHelpButton } from "../components/dashboard/DashboardHelpButton";
 import { DashboardTutorialOverlay } from "../components/dashboard/DashboardTutorialOverlay";
 import { useDashboardTutorial } from "../hooks/useDashboardTutorial";
-import { Badge } from "../components/ui/Badge";
-import { Button } from "../components/ui/Button";
+import { ChartCard } from "../components/charts/ChartCard";
 import {
   Card,
   CardContent,
-  CardHeader,
-  CardHint,
-  CardTitle,
 } from "../components/ui/Card";
+import {
+  PlatformOption,
+  PeriodPlatformFilterCard,
+  RangePreset,
+  rangeLabel,
+} from "../components/filters/PeriodPlatformFilterCard";
+import { PH_COPY } from "../ui/copy/ph";
 
 function cn(...classes: Array<string | false | null | undefined>) {
   return classes.filter(Boolean).join(" ");
 }
 
-const CONTROL_CLASS =
-  "h-9 w-full rounded-md border border-slate-200 bg-white px-3 text-sm text-slate-900 shadow-sm focus:border-emerald-500 focus:outline-none focus:ring-2 focus:ring-emerald-500/30";
+function startOfToday() {
+  const d = new Date();
+  d.setHours(0, 0, 0, 0);
+  return d;
+}
+
+function endOfToday() {
+  const d = new Date();
+  d.setHours(23, 59, 59, 999);
+  return d;
+}
+
+function startOfWeek() {
+  const d = new Date();
+  const diff = (d.getDay() + 6) % 7;
+  d.setDate(d.getDate() - diff);
+  d.setHours(0, 0, 0, 0);
+  return d;
+}
+
+function startOfMonth() {
+  const d = new Date();
+  d.setDate(1);
+  d.setHours(0, 0, 0, 0);
+  return d;
+}
+
+function formatDateInput(date: Date) {
+  return date.toISOString().slice(0, 10);
+}
 
 function formatCurrency(value: number): string {
   const num = Number.isFinite(value) ? value : 0;
@@ -115,6 +146,9 @@ export function DashboardPage() {
       to: new Date().toISOString().slice(0, 10),
     }),
   );
+  const [preset, setPreset] = useState<RangePreset>("CUSTOM");
+  const [platform, setPlatform] = useState<PlatformOption>("ALL");
+  const periodLabel = useMemo(() => rangeLabel(preset), [preset]);
   const [detailView, setDetailView] = useState<"pending" | "ship" | "low" | null>(
     null,
   );
@@ -135,7 +169,7 @@ export function DashboardPage() {
       } catch (e) {
         console.error(e);
         if (!cancelled) {
-          setError("Failed to load dashboard data.");
+          setError(PH_COPY.dashboard.errorLoading);
         }
       } finally {
         if (!cancelled) {
@@ -151,407 +185,368 @@ export function DashboardPage() {
 
   const lowStockItems: DashboardLowStockItem[] = summary?.lowStockItems ?? [];
   const recentSessions: DashboardSessionTile[] = summary?.recentSessions ?? [];
+
+  function handlePresetChange(newPreset: RangePreset) {
+    setPreset(newPreset);
+    let from = startOfToday();
+    const to = endOfToday();
+
+    if (newPreset === "THIS_WEEK") {
+      from = startOfWeek();
+    } else if (newPreset === "THIS_MONTH") {
+      from = startOfMonth();
+    } else if (newPreset === "CUSTOM") {
+      return;
+    }
+
+    setDateFrom(formatDateInput(from));
+    setDateTo(formatDateInput(to));
+  }
+
   function applyDateRange() {
     const from = dateFrom || dateTo || new Date().toISOString().slice(0, 10);
     const to = dateTo || dateFrom || new Date().toISOString().slice(0, 10);
     setAppliedRange({ from, to });
   }
 
-  const statCardClass = (active: boolean) =>
-    cn(
-      "rounded-xl border border-slate-200 bg-white p-4 text-left shadow-sm transition",
-      "hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500/30",
-      active ? "ring-1 ring-emerald-200" : "",
-    );
-
   return (
-    <Page className="space-y-6">
-      {loading ? (
-        <Card className="bg-slate-50">
-          <CardContent className="py-3 text-xs text-slate-600">
-            Loading dashboard data...
-          </CardContent>
-        </Card>
-      ) : null}
+    <Page className="w-full max-w-none min-w-0 px-3 py-4 sm:px-4 md:px-6 lg:px-8">
+      <div className="space-y-4">
+        {loading ? (
+          <Card className="bg-slate-50">
+            <CardContent className="py-3 text-xs text-slate-600">
+              {PH_COPY.dashboard.loading}
+            </CardContent>
+          </Card>
+        ) : null}
 
-      {error ? (
-        <Card className="border-rose-500/70 bg-rose-50">
-          <CardContent className="py-3 text-xs text-rose-700">{error}</CardContent>
-        </Card>
-      ) : null}
+        {error ? (
+          <Card className="border-rose-500/70 bg-rose-50">
+            <CardContent className="py-3 text-xs text-rose-700">{error}</CardContent>
+          </Card>
+        ) : null}
 
-      <Card className="p-4" data-tour="dashboard-range">
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
-          <div className="flex-1 space-y-2">
-            <div className="text-xs font-medium text-slate-600">
-              Sales date range
-            </div>
-            <div className="flex flex-wrap items-center gap-2">
-              <div className="w-full sm:w-auto sm:min-w-[160px]">
-                <input
-                  type="date"
-                  value={dateFrom}
-                  onChange={(e) => setDateFrom(e.target.value)}
-                  className={CONTROL_CLASS}
-                />
-              </div>
-              <span className="text-xs text-slate-500">to</span>
-              <div className="w-full sm:w-auto sm:min-w-[160px]">
-                <input
-                  type="date"
-                  value={dateTo}
-                  onChange={(e) => setDateTo(e.target.value)}
-                  className={CONTROL_CLASS}
-                />
-              </div>
-            </div>
-            <p className="text-xs text-slate-500">
-              Sales uses the selected range; other tiles are real-time.
-            </p>
-          </div>
-          <Button
-            variant="primary"
-            onClick={applyDateRange}
-            className="w-full sm:w-auto"
-          >
-            Apply
-          </Button>
-        </div>
-      </Card>
+        <PeriodPlatformFilterCard
+          preset={preset}
+          onPresetChange={handlePresetChange}
+          dateFrom={dateFrom}
+          onDateFromChange={(value) => {
+            setDateFrom(value);
+            setPreset("CUSTOM");
+          }}
+          dateTo={dateTo}
+          onDateToChange={(value) => {
+            setDateTo(value);
+            setPreset("CUSTOM");
+          }}
+          platform={platform}
+          onPlatformChange={(value) => setPlatform(value)}
+          periodLabel={periodLabel}
+          showPeriodLabel
+          helperText={PH_COPY.dashboard.filterHelper}
+          onApply={applyDateRange}
+          dataTour="dashboard-range"
+        />
 
-      {summary ? (
+        {summary ? (
         <div
-          className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4"
+          className="grid grid-cols-2 gap-3 sm:grid-cols-2 lg:grid-cols-4"
           data-tour="dashboard-stats"
         >
-          <button
-            type="button"
-            onClick={() => setDetailView(null)}
-            className={statCardClass(detailView === null)}
-          >
-            <div className="flex items-center justify-between gap-2">
-              <span className="text-xs font-medium text-slate-600">
-                Sales (range)
-              </span>
-              <span className="text-xs text-slate-500">
-                {summary.dateRangeLabel}
-              </span>
-            </div>
-            <div className="mt-2 text-lg font-semibold tabular-nums text-emerald-600">
-              {formatCurrency(summary.rangeSales)}
-            </div>
-            <div className="mt-1 text-xs text-slate-500">
-              Paid orders:{" "}
-              <span className="font-semibold tabular-nums text-slate-900">
-                {summary.rangeOrdersCount}
-              </span>
-            </div>
-          </button>
-
-          <button
-            type="button"
-            onClick={() => setDetailView("pending")}
-            className={statCardClass(detailView === "pending")}
-          >
-            <div className="flex items-center justify-between gap-2">
-              <span className="text-xs font-medium text-slate-600">
-                Pending payments
-              </span>
-              <span className="text-xs text-slate-500">Not fully paid</span>
-            </div>
-            <div className="mt-2 text-lg font-semibold tabular-nums text-amber-600">
-              {summary.pendingPaymentsCount}
-            </div>
-            <div className="mt-1 text-xs text-slate-500">
-              Total balance:{" "}
-              <span className="font-semibold tabular-nums text-amber-700">
-                {formatCurrency(summary.pendingPaymentsAmount)}
-              </span>
-            </div>
-          </button>
-
-          <button
-            type="button"
-            onClick={() => setDetailView("ship")}
-            className={statCardClass(detailView === "ship")}
-          >
-            <div className="flex items-center justify-between gap-2">
-              <span className="text-xs font-medium text-slate-600">To ship</span>
-              <span className="text-xs text-slate-500">Paid, not shipped</span>
-            </div>
-            <div className="mt-2 text-lg font-semibold tabular-nums text-sky-700">
-              {summary.toShipCount}
-            </div>
-            <div className="mt-1 text-xs text-slate-500">
-              Click to see orders to ship.
-            </div>
-          </button>
-
-          <button
-            type="button"
-            onClick={() => setDetailView("low")}
-            className={statCardClass(detailView === "low")}
-          >
-            <div className="flex items-center justify-between gap-2">
-              <span className="text-xs font-medium text-slate-600">Low stock</span>
-              <span className="text-xs text-slate-500">Near zero</span>
-            </div>
-            <div className="mt-2 text-lg font-semibold tabular-nums text-rose-600">
-              {summary.lowStockCount}
-            </div>
-            <div className="mt-1 text-xs text-slate-500">
-              Click to view low-stock items.
-            </div>
-          </button>
+          {[
+            {
+              id: "range",
+              title: "Sales (range)",
+              subtitle: summary.dateRangeLabel,
+              value: formatCurrency(summary.rangeSales),
+              detail: `${PH_COPY.dashboard.statsDetailRangeOrders} ${summary.rangeOrdersCount}`,
+              accent: "text-emerald-600",
+              onClick: () => setDetailView(null),
+            },
+            {
+              id: "pending",
+              title: "Pending payments",
+              subtitle: "Not fully paid",
+              value: summary.pendingPaymentsCount.toString(),
+              detail: `${PH_COPY.dashboard.statsDetailPendingBalance} ${formatCurrency(
+                summary.pendingPaymentsAmount,
+              )}`,
+              accent: "text-amber-600",
+              onClick: () => setDetailView("pending"),
+            },
+            {
+              id: "ship",
+              title: "To ship",
+              subtitle: "Paid, not shipped",
+              value: summary.toShipCount.toString(),
+              detail: PH_COPY.dashboard.statsDetailShip,
+              accent: "text-sky-700",
+              onClick: () => setDetailView("ship"),
+            },
+            {
+              id: "low",
+              title: "Low stock",
+              subtitle: "Near zero",
+              value: summary.lowStockCount.toString(),
+              detail: PH_COPY.dashboard.statsDetailLow,
+              accent: "text-rose-600",
+              onClick: () => setDetailView("low"),
+            },
+          ].map((tile) => (
+            <button
+              key={tile.id}
+              type="button"
+              onClick={tile.onClick}
+              className="w-full rounded-2xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500/40"
+            >
+              <ChartCard
+                title={tile.title}
+                subtitle={tile.subtitle}
+                compact
+                className="shadow-sm border border-transparent transition hover:border-slate-200 hover:shadow-lg"
+                bodyClassName="space-y-2"
+              >
+                <div className="text-2xl font-semibold tabular-nums">
+                  <span className={tile.accent}>{tile.value}</span>
+                </div>
+                <p className="text-[11px] text-slate-500">{tile.detail}</p>
+              </ChartCard>
+            </button>
+          ))}
         </div>
-      ) : null}
+        ) : null}
 
       {summary && detailView === "pending" ? (
-        <Card>
-          <CardHeader>
-            <div>
-              <CardTitle>Pending payments</CardTitle>
-              <CardHint>Who still owes and for which orders.</CardHint>
-            </div>
-            <span className="text-xs text-slate-500">
-              {summary.pendingOrders.length} order(s)
-            </span>
-          </CardHeader>
-          <CardContent className="py-3">
-            {summary.pendingOrders.length === 0 ? (
-              <p className="text-sm text-slate-600">
-                All orders are fully paid. Good job!
-              </p>
-            ) : (
-              <div className="overflow-x-auto">
-                <table className="min-w-full text-left">
-                  <thead className="border-b border-slate-200 bg-slate-50 text-xs uppercase tracking-wide text-slate-500">
-                    <tr>
-                      <th className="px-4 py-2">Order</th>
-                      <th className="px-4 py-2">Customer</th>
-                      <th className="px-4 py-2">Items</th>
-                      <th className="px-4 py-2 text-right">Balance</th>
+        <ChartCard
+          title="Pending payments"
+          subtitle="Who still owes and for which orders."
+          compact
+          className="shadow-sm"
+          bodyClassName="space-y-3"
+        >
+          <div className="text-xs text-slate-500">
+            {summary.pendingOrders.length} order(s)
+          </div>
+          {summary.pendingOrders.length === 0 ? (
+            <p className="text-sm text-slate-600">{PH_COPY.dashboard.noPendingOrders}</p>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="min-w-full text-left text-xs">
+                <thead className="border-b border-slate-200 bg-slate-50 uppercase tracking-wide text-slate-500">
+                  <tr>
+                    <th className="px-4 py-2">Order</th>
+                    <th className="px-4 py-2">Customer</th>
+                    <th className="px-4 py-2">Items</th>
+                    <th className="px-4 py-2 text-right">Balance</th>
+                  </tr>
+                </thead>
+                <tbody className="text-xs">
+                  {summary.pendingOrders.map((o) => (
+                    <tr
+                      key={o.id}
+                      className="border-t border-slate-200 hover:bg-slate-50"
+                    >
+                      <td className="px-4 py-2">
+                        <div className="flex flex-col">
+                          <span className="font-semibold text-slate-900">
+                            {o.orderNumber}
+                          </span>
+                          {o.liveSessionTitle ? (
+                            <span className="text-[11px] text-slate-500">
+                              {o.liveSessionTitle}
+                            </span>
+                          ) : null}
+                          <span className="text-[11px] text-amber-700">
+                            {o.paymentStatus}
+                          </span>
+                        </div>
+                      </td>
+                      <td className="px-4 py-2 text-slate-900">
+                        {o.customerName}
+                      </td>
+                      <td className="px-4 py-2 text-slate-700">{o.itemsSummary}</td>
+                      <td className="px-4 py-2 text-right font-semibold tabular-nums text-amber-700">
+                        {formatCurrency(o.balanceDue)}
+                      </td>
                     </tr>
-                  </thead>
-                  <tbody className="text-sm">
-                    {summary.pendingOrders.map((o) => (
-                      <tr
-                        key={o.id}
-                        className="border-t border-slate-200 hover:bg-slate-50"
-                      >
-                        <td className="px-4 py-2">
-                          <div className="flex flex-col">
-                            <span className="font-semibold text-slate-900">
-                              {o.orderNumber}
-                            </span>
-                            {o.liveSessionTitle ? (
-                              <span className="text-xs text-slate-500">
-                                {o.liveSessionTitle}
-                              </span>
-                            ) : null}
-                            <span className="text-xs text-amber-700">
-                              {o.paymentStatus}
-                            </span>
-                          </div>
-                        </td>
-                        <td className="px-4 py-2 text-slate-900">
-                          {o.customerName}
-                        </td>
-                        <td className="px-4 py-2 text-slate-700">{o.itemsSummary}</td>
-                        <td className="px-4 py-2 text-right font-semibold tabular-nums text-amber-700">
-                          {formatCurrency(o.balanceDue)}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            )}
-          </CardContent>
-        </Card>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </ChartCard>
       ) : null}
 
       {summary && detailView === "ship" ? (
-        <Card>
-          <CardHeader>
-            <div>
-              <CardTitle>Orders to ship</CardTitle>
-              <CardHint>Paid but not yet shipped.</CardHint>
-            </div>
-            <span className="text-xs text-slate-500">
-              {summary.toShipOrders.length} order(s)
-            </span>
-          </CardHeader>
-          <CardContent className="py-3">
-            {summary.toShipOrders.length === 0 ? (
-              <p className="text-sm text-slate-600">Nothing to ship right now.</p>
-            ) : (
-              <div className="overflow-x-auto">
-                <table className="min-w-full text-left">
-                  <thead className="border-b border-slate-200 bg-slate-50 text-xs uppercase tracking-wide text-slate-500">
-                    <tr>
-                      <th className="px-4 py-2">Order</th>
-                      <th className="px-4 py-2">Customer</th>
-                      <th className="px-4 py-2">Items</th>
-                      <th className="px-4 py-2 text-right">Total</th>
-                    </tr>
-                  </thead>
-                  <tbody className="text-sm">
-                    {summary.toShipOrders.map((o) => (
-                      <tr
-                        key={o.id}
-                        className="border-t border-slate-200 hover:bg-slate-50"
-                      >
-                        <td className="px-4 py-2">
-                          <div className="flex flex-col">
-                            <span className="font-semibold text-slate-900">
-                              {o.orderNumber}
+        <ChartCard
+          title="Orders to ship"
+          subtitle="Paid but not yet shipped."
+          compact
+          className="shadow-sm"
+          bodyClassName="space-y-3"
+        >
+          <div className="text-xs text-slate-500">
+            {summary.toShipOrders.length} order(s)
+          </div>
+          {summary.toShipOrders.length === 0 ? (
+            <p className="text-sm text-slate-600">{PH_COPY.dashboard.nothingToShip}</p>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="min-w-full text-left text-xs">
+                <thead className="border-b border-slate-200 bg-slate-50 uppercase tracking-wide text-slate-500">
+                  <tr>
+                    <th className="px-4 py-2">Order</th>
+                    <th className="px-4 py-2">Customer</th>
+                    <th className="px-4 py-2">Items</th>
+                    <th className="px-4 py-2 text-right">Total</th>
+                  </tr>
+                </thead>
+                <tbody className="text-xs">
+                  {summary.toShipOrders.map((o) => (
+                    <tr
+                      key={o.id}
+                      className="border-t border-slate-200 hover:bg-slate-50"
+                    >
+                      <td className="px-4 py-2">
+                        <div className="flex flex-col">
+                          <span className="font-semibold text-slate-900">
+                            {o.orderNumber}
+                          </span>
+                          {o.liveSessionTitle ? (
+                            <span className="text-[11px] text-slate-500">
+                              {o.liveSessionTitle}
                             </span>
-                            {o.liveSessionTitle ? (
-                              <span className="text-xs text-slate-500">
-                                {o.liveSessionTitle}
-                              </span>
-                            ) : null}
-                            <span className="text-xs text-sky-700">{o.status}</span>
-                          </div>
-                        </td>
-                        <td className="px-4 py-2 text-slate-900">
-                          {o.customerName}
-                        </td>
-                        <td className="px-4 py-2 text-slate-700">{o.itemsSummary}</td>
-                        <td className="px-4 py-2 text-right font-semibold tabular-nums text-slate-900">
-                          {formatCurrency(o.grandTotal)}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            )}
-          </CardContent>
-        </Card>
+                          ) : null}
+                          <span className="text-[11px] text-sky-700">{o.status}</span>
+                        </div>
+                      </td>
+                      <td className="px-4 py-2 text-slate-900">
+                        {o.customerName}
+                      </td>
+                      <td className="px-4 py-2 text-slate-700">{o.itemsSummary}</td>
+                      <td className="px-4 py-2 text-right font-semibold tabular-nums text-slate-900">
+                        {formatCurrency(o.grandTotal)}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </ChartCard>
       ) : null}
 
       {summary && detailView === "low" ? (
-        <Card>
-          <CardHeader>
-            <div>
-              <CardTitle>Low stock items</CardTitle>
-              <CardHint>Click Inventory to restock.</CardHint>
-            </div>
-            <span className="text-xs text-slate-500">
-              {summary.lowStockItems.length} item(s)
-            </span>
-          </CardHeader>
-          <CardContent className="py-3">
-            {summary.lowStockItems.length === 0 ? (
-              <p className="text-sm text-slate-600">No low-stock items yet.</p>
-            ) : (
-              <LowStockTable items={summary.lowStockItems} />
-            )}
-          </CardContent>
-        </Card>
+        <ChartCard
+          title="Low stock items"
+          subtitle="Click Inventory to restock."
+          compact
+          className="shadow-sm"
+          bodyClassName="space-y-3"
+        >
+          <div className="text-xs text-slate-500">
+            {summary.lowStockItems.length} item(s)
+          </div>
+          {summary.lowStockItems.length === 0 ? (
+            <p className="text-sm text-slate-600">
+              {PH_COPY.dashboard.noLowStockYet}
+            </p>
+          ) : (
+            <LowStockTable items={summary.lowStockItems} />
+          )}
+        </ChartCard>
       ) : null}
 
       {summary ? (
-        <div className="grid gap-6 lg:grid-cols-2">
-          <Card data-tour="dashboard-recent-sessions">
-            <CardHeader>
-              <CardTitle>Recent live sessions</CardTitle>
-              <CardHint>Based on paid orders per session.</CardHint>
-            </CardHeader>
-            <CardContent className="py-3">
-              {recentSessions.length === 0 ? (
-                <p className="text-sm text-slate-600">
-                  No sessions with paid orders yet. Once you build orders from
-                  claims, you will see performance per live session here.
-                </p>
-              ) : (
-                <div className="grid gap-3 sm:grid-cols-2">
-                  {recentSessions.map((session) => (
-                    <Card key={session.id} className="p-3 shadow-none">
-                      <div className="flex items-start justify-between gap-2">
-                        <div className="min-w-0">
-                          <div className="truncate text-sm font-semibold text-slate-900">
-                            {session.title}
-                          </div>
-                          <div className="mt-1 text-xs text-slate-500">
-                            {session.startTime
-                              ? formatDateTime(session.startTime)
-                              : "No start time"}
-                          </div>
+        <div className="grid gap-4 lg:grid-cols-2">
+          <ChartCard
+            title="Recent live sessions"
+            subtitle="Based on paid orders per session."
+            compact
+            className="shadow-sm"
+            bodyClassName="space-y-3"
+            data-tour="dashboard-recent-sessions"
+          >
+            {recentSessions.length === 0 ? (
+              <p className="text-sm text-slate-600">
+                {PH_COPY.dashboard.noRecentSessions}
+              </p>
+            ) : (
+              <div className="grid gap-3 sm:grid-cols-2">
+                {recentSessions.map((session) => (
+                  <ChartCard
+                    key={session.id}
+                    title={session.title}
+                    subtitle={session.startTime ? formatDateTime(session.startTime) : "No start time"}
+                    badge={formatPlatform(session.platform)}
+                    compact
+                    className="shadow-sm"
+                    bodyClassName="space-y-2"
+                  >
+                    <div className="grid grid-cols-3 gap-2 text-xs">
+                      <div>
+                        <div className="text-[11px] font-medium text-slate-600">
+                          Revenue
                         </div>
-                        <Badge className="shrink-0" variant="neutral">
-                          {formatPlatform(session.platform)}
-                        </Badge>
-                      </div>
-
-                      <div className="mt-3 grid grid-cols-3 gap-2 text-xs">
-                        <div>
-                          <div className="text-xs font-medium text-slate-600">
-                            Revenue
-                          </div>
-                          <div className="font-semibold tabular-nums text-emerald-600">
-                            {formatCurrency(session.revenue)}
-                          </div>
-                        </div>
-                        <div>
-                          <div className="text-xs font-medium text-slate-600">
-                            Profit
-                          </div>
-                          <div
-                            className={cn(
-                              "font-semibold tabular-nums",
-                              session.profit >= 0
-                                ? "text-emerald-600"
-                                : "text-rose-600",
-                            )}
-                          >
-                            {formatCurrency(session.profit)}
-                          </div>
-                        </div>
-                        <div className="text-right">
-                          <div className="text-xs font-medium text-slate-600">
-                            Status
-                          </div>
-                          <div className="font-semibold text-slate-900">
-                            {session.status}
-                          </div>
+                        <div className="font-semibold tabular-nums text-emerald-600">
+                          {formatCurrency(session.revenue)}
                         </div>
                       </div>
-                    </Card>
-                  ))}
-                </div>
-              )}
-            </CardContent>
-          </Card>
+                      <div>
+                        <div className="text-[11px] font-medium text-slate-600">
+                          Profit
+                        </div>
+                        <div
+                          className={cn(
+                            "font-semibold tabular-nums",
+                            session.profit >= 0 ? "text-emerald-600" : "text-rose-600",
+                          )}
+                        >
+                          {formatCurrency(session.profit)}
+                        </div>
+                      </div>
+                      <div className="text-right">
+                        <div className="text-[11px] font-medium text-slate-600">
+                          Status
+                        </div>
+                        <div className="font-semibold text-slate-900">
+                          {session.status}
+                        </div>
+                      </div>
+                    </div>
+                  </ChartCard>
+                ))}
+              </div>
+            )}
+          </ChartCard>
 
-          <Card data-tour="dashboard-low-stock">
-            <CardHeader>
-              <CardTitle>Low stock items</CardTitle>
-              <CardHint>Auto-flagged by item threshold.</CardHint>
-            </CardHeader>
-            <CardContent className="py-3">
-              {lowStockItems.length === 0 ? (
-                <p className="text-sm text-slate-600">
-                  No low-stock items. Set thresholds in Inventory to enable warnings.
-                </p>
-              ) : (
-                <LowStockTable items={lowStockItems} />
-              )}
-            </CardContent>
-          </Card>
+          <ChartCard
+            title="Low stock items"
+            subtitle="Auto-flagged by item threshold."
+            compact
+            className="shadow-sm"
+            bodyClassName="space-y-3"
+            data-tour="dashboard-low-stock"
+          >
+            {lowStockItems.length === 0 ? (
+              <p className="text-sm text-slate-600">
+                {PH_COPY.dashboard.lowStockHint}
+              </p>
+            ) : (
+              <LowStockTable items={lowStockItems} />
+            )}
+          </ChartCard>
         </div>
       ) : null}
 
       {!loading && !summary && !error ? (
         <Card className="bg-slate-50">
           <CardContent className="py-3 text-xs text-slate-600">
-            No data yet. Once you create inventory, live sessions, claims, and
-            orders, this dashboard will show your real-time selling status.
+            {PH_COPY.dashboard.noDataYet}
           </CardContent>
         </Card>
       ) : null}
+      </div>
       <DashboardHelpButton onClick={tutorial.open} />
       <DashboardTutorialOverlay
         isOpen={tutorial.isOpen}

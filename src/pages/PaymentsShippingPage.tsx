@@ -218,6 +218,45 @@ export function PaymentsShippingPage() {
     [loadingOrders, queueOrders.length, activeSessionId]
   );
 
+  const paymentTotal = useMemo(() => {
+    return payments.reduce((sum, payment) => {
+      if (payment.status === "POSTED") {
+        return sum + payment.amount;
+      }
+      return sum;
+    }, 0);
+  }, [payments]);
+
+  const derivedBalance = useMemo(() => {
+    if (!orderDetail) return 0;
+    const total = orderDetail.order.grandTotal - paymentTotal;
+    return total > 0 ? total : 0;
+  }, [orderDetail, paymentTotal]);
+
+  const derivedPaymentStatus = useMemo<Order["paymentStatus"]>(() => {
+    if (!orderDetail) return "UNPAID";
+    if (paymentTotal <= 0) return "UNPAID";
+    if (paymentTotal >= orderDetail.order.grandTotal) return "PAID";
+    return "PARTIAL";
+  }, [orderDetail, paymentTotal]);
+
+  const parsedFormAmount = useMemo(() => {
+    const raw = formAmount.replace(/,/g, "").trim();
+    const value = parseFloat(raw);
+    return Number.isFinite(value) ? value : 0;
+  }, [formAmount]);
+
+  const amountGreaterThanBalance =
+    derivedBalance > 0 && parsedFormAmount > derivedBalance;
+
+  const disableSavePayment =
+    !activeOrderId ||
+    savingPayment ||
+    parsedFormAmount <= 0 ||
+    derivedBalance <= 0 ||
+    amountGreaterThanBalance;
+
+
   useEffect(() => {
     if (
       !activeOrderId ||
@@ -230,13 +269,12 @@ export function PaymentsShippingPage() {
 
   useEffect(() => {
     if (!orderDetail) return;
-    const balance = orderDetail.order.balanceDue ?? 0;
     setFormAmount(
-      balance > 0
-        ? balance.toFixed(2)
-        : orderDetail.order.grandTotal.toFixed(2)
+      derivedBalance > 0
+        ? derivedBalance.toFixed(2)
+        : orderDetail.order.grandTotal.toFixed(2),
     );
-  }, [orderDetail]);
+  }, [orderDetail, derivedBalance]);
 
   useEffect(() => {
     if (!activeOrderId) {
@@ -289,7 +327,21 @@ export function PaymentsShippingPage() {
     const amount = parseFloat(raw);
 
     if (!Number.isFinite(amount) || amount <= 0) {
-      setError("Please enter a valid payment amount greater than 0.");
+      setError("Maglagay ng bayad na higit sa ₱0.00.");
+      return;
+    }
+
+    if (derivedBalance <= 0) {
+      setError("Wala nang natitirang balance para sa order na ito.");
+      return;
+    }
+
+    if (amount > derivedBalance) {
+      setError(
+        `Lagpas ang bayad sa natitirang balance (${formatCurrency(
+          derivedBalance,
+        )}). Bawasan muna.`,
+      );
       return;
     }
 
@@ -359,10 +411,11 @@ export function PaymentsShippingPage() {
   }
   return (
     <Page className="space-y-6">
+      <div className="max-w-7xl mx-auto space-y-6 px-3 sm:px-4">
       <Card>
-        <CardContent className="grid gap-4 md:grid-cols-2">
+        <CardContent className="grid gap-4 md:grid-cols-2 items-start">
           <div
-            className="space-y-2 md:pr-4 md:border-r md:border-slate-200"
+            className="space-y-3 md:pr-6 md:border-r md:border-slate-200"
             data-tour="payments-shipping-session"
           >
             <label className="text-xs font-medium text-slate-600">
@@ -373,7 +426,7 @@ export function PaymentsShippingPage() {
               onChange={(e) =>
                 setActiveSessionId(e.target.value ? e.target.value : undefined)
               }
-              className={CONTROL_CLASS}
+              className={cn(CONTROL_CLASS, "w-full")}
             >
               {sessions.length === 0 && <option value="">No sessions yet</option>}
               {sessions.length > 0 && activeSessionId == null && (
@@ -404,7 +457,7 @@ export function PaymentsShippingPage() {
             )}
           </div>
 
-          <div className="space-y-3 md:pl-4" data-tour="payments-shipping-order">
+          <div className="space-y-3 md:pl-6" data-tour="payments-shipping-order">
             <div className="space-y-2">
               <label className="text-xs font-medium text-slate-600">Order</label>
               <select
@@ -412,7 +465,7 @@ export function PaymentsShippingPage() {
                 onChange={(e) =>
                   setActiveOrderId(e.target.value ? e.target.value : undefined)
                 }
-                className={CONTROL_CLASS}
+                className={cn(CONTROL_CLASS, "w-full")}
               >
                 {!activeSessionId && (
                   <option value="">Select a session first...</option>
@@ -449,7 +502,7 @@ export function PaymentsShippingPage() {
               <div className="text-xs font-medium text-slate-600">
                 Filter by payment
               </div>
-              <div className="flex max-w-full gap-2 overflow-x-auto pb-1">
+              <div className="flex flex-wrap gap-2">
                 {(["ALL", "UNPAID", "PARTIAL", "PAID"] as const).map(
                   (status) => {
                     const active = orderPaymentFilter === status;
@@ -514,11 +567,11 @@ export function PaymentsShippingPage() {
             </CardHeader>
             {loadingOrderData ? (
               <div className="px-4 py-4 text-sm text-slate-600">
-                Loading order details...
+                Naglo-load pa ng detalye ng order...
               </div>
             ) : !orderDetail ? (
               <div className="px-4 py-4 text-sm text-slate-600">
-                Select an order to see its totals and payments.
+                Piliin ang order para makita ang kabuuan at mga bayad.
               </div>
             ) : (
               <CardContent className="space-y-4 text-sm">
@@ -550,7 +603,7 @@ export function PaymentsShippingPage() {
                   </div>
                 </div>
 
-                <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 text-xs">
+                  <div className="grid grid-cols-2 gap-3 sm:grid-cols-2 lg:grid-cols-3 text-xs">
                   <div className="rounded-lg bg-slate-50 px-3 py-2">
                     <div className="text-xs font-medium text-slate-600">
                       Subtotal
@@ -605,29 +658,27 @@ export function PaymentsShippingPage() {
                       {formatCurrency(orderDetail.order.amountPaid)}
                     </div>
                   </div>
-                  <div className="rounded-lg bg-slate-50 px-3 py-2">
-                    <div className="text-xs font-medium text-slate-600">
-                      Balance
-                    </div>
-                    <div className="mt-1 font-semibold tabular-nums text-amber-700">
-                      {formatCurrency(orderDetail.order.balanceDue)}
-                    </div>
-                  </div>
-                  <div className="rounded-lg bg-slate-50 px-3 py-2">
-                    <div className="text-xs font-medium text-slate-600">
-                      Payment status
-                    </div>
-                    <div className="mt-1">
-                      <Badge
-                        variant={orderPaymentBadgeVariant(
-                          orderDetail.order.paymentStatus,
-                        )}
-                        className="text-[10px] uppercase tracking-wide"
-                      >
-                        {orderDetail.order.paymentStatus}
-                      </Badge>
-                    </div>
-                  </div>
+                        <div className="rounded-lg bg-slate-50 px-3 py-2">
+                          <div className="text-xs font-medium text-slate-600">
+                            Balance
+                          </div>
+                          <div className="mt-1 font-semibold tabular-nums text-amber-700">
+                            {formatCurrency(derivedBalance)}
+                          </div>
+                        </div>
+                        <div className="rounded-lg bg-slate-50 px-3 py-2">
+                          <div className="text-xs font-medium text-slate-600">
+                            Payment status
+                          </div>
+                          <div className="mt-1">
+                            <Badge
+                              variant={orderPaymentBadgeVariant(derivedPaymentStatus)}
+                              className="text-[10px] uppercase tracking-wide"
+                            >
+                              {derivedPaymentStatus}
+                            </Badge>
+                          </div>
+                        </div>
                 </div>
               </CardContent>
             )}
@@ -676,78 +727,80 @@ export function PaymentsShippingPage() {
               </div>
             </CardHeader>
             <CardContent className="p-0">
-              <div ref={paymentsListRef} className="max-h-64 overflow-y-auto">
-                {loadingOrderData ? (
-                  <div className="px-4 py-4 text-sm text-slate-600">
-                    Loading payments...
-                  </div>
-                ) : !activeOrderId ? (
-                  <div className="px-4 py-4 text-sm text-slate-600">
-                    Select an order first.
-                  </div>
-                ) : filteredPayments.length === 0 ? (
-                  <div className="px-4 py-4 text-sm text-slate-600">
-                    Walang payments pa for this order.
-                  </div>
-                ) : (
-                  <div className="overflow-x-auto">
-                    <table className="min-w-full text-left text-xs">
-                      <thead className={TABLE_HEAD_CLASS}>
-                        <tr>
-                          <th className="px-3 py-2">Date</th>
-                          <th className="px-3 py-2 text-right">Amount</th>
-                          <th className="px-3 py-2">Method</th>
-                          <th className="px-3 py-2">Ref #</th>
-                          <th className="px-3 py-2">Status</th>
-                          <th className="px-3 py-2 text-right">Actions</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {filteredPayments.map((p) => (
-                          <tr
-                            key={p.id}
-                            className="border-t border-slate-200 hover:bg-slate-50"
-                          >
-                            <td className="px-3 py-2 text-[11px] text-slate-700">
-                              {formatDateTime(p.date)}
-                            </td>
-                            <td className="px-3 py-2 text-right text-[11px] font-semibold tabular-nums text-slate-900">
-                              {formatCurrency(p.amount)}
-                            </td>
-                            <td className="px-3 py-2 text-[11px] text-slate-700">
-                              {p.method}
-                            </td>
-                            <td className="px-3 py-2 text-[11px] text-slate-500">
-                              {p.referenceNumber ?? "-"}
-                            </td>
-                            <td className="px-3 py-2 text-[11px] text-slate-700">
-                              <Badge
-                                variant={paymentRecordBadgeVariant(p.status)}
-                                className="text-[10px] uppercase tracking-wide"
-                              >
-                                {p.status}
-                              </Badge>
-                            </td>
-                            <td className="px-3 py-2 text-right text-[11px]">
-                              <Button
-                                size="sm"
-                                variant="danger"
-                                disabled={p.status === "VOIDED"}
-                                onClick={() => void handleVoidPayment(p)}
-                              >
-                                {voidingPaymentId === p.id
-                                  ? "Voiding..."
-                                  : p.status === "VOIDED"
-                                  ? "Voided"
-                                  : "Void"}
-                              </Button>
-                            </td>
+              <div className="px-4 py-4">
+                <div ref={paymentsListRef} className="max-h-64 overflow-y-auto">
+                  {loadingOrderData ? (
+                    <div className="text-sm text-slate-600">
+                      Loading payments...
+                    </div>
+                  ) : !activeOrderId ? (
+                    <div className="text-sm text-slate-600">
+                      Select an order first.
+                    </div>
+                  ) : filteredPayments.length === 0 ? (
+                    <div className="text-sm text-slate-600">
+                      Walang payments pa for this order.
+                    </div>
+                  ) : (
+                    <div className="overflow-x-auto">
+                      <table className="min-w-full text-left text-xs">
+                        <thead className={TABLE_HEAD_CLASS}>
+                          <tr>
+                            <th className="px-3 py-2">Date</th>
+                            <th className="px-3 py-2 text-right">Amount</th>
+                            <th className="px-3 py-2">Method</th>
+                            <th className="px-3 py-2">Ref #</th>
+                            <th className="px-3 py-2">Status</th>
+                            <th className="px-3 py-2 text-right">Actions</th>
                           </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                )}
+                        </thead>
+                        <tbody>
+                          {filteredPayments.map((p) => (
+                            <tr
+                              key={p.id}
+                              className="border-t border-slate-200 hover:bg-slate-50"
+                            >
+                              <td className="px-3 py-2 text-[11px] text-slate-700">
+                                {formatDateTime(p.date)}
+                              </td>
+                              <td className="px-3 py-2 text-right text-[11px] font-semibold tabular-nums text-slate-900">
+                                {formatCurrency(p.amount)}
+                              </td>
+                              <td className="px-3 py-2 text-[11px] text-slate-700">
+                                {p.method}
+                              </td>
+                              <td className="px-3 py-2 text-[11px] text-slate-500">
+                                {p.referenceNumber ?? "-"}
+                              </td>
+                              <td className="px-3 py-2 text-[11px] text-slate-700">
+                                <Badge
+                                  variant={paymentRecordBadgeVariant(p.status)}
+                                  className="text-[10px] uppercase tracking-wide"
+                                >
+                                  {p.status}
+                                </Badge>
+                              </td>
+                              <td className="px-3 py-2 text-right text-[11px]">
+                                <Button
+                                  size="sm"
+                                  variant="danger"
+                                  disabled={p.status === "VOIDED"}
+                                  onClick={() => void handleVoidPayment(p)}
+                                >
+                                  {voidingPaymentId === p.id
+                                    ? "Voiding..."
+                                    : p.status === "VOIDED"
+                                    ? "Voided"
+                                    : "Void"}
+                                </Button>
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+                </div>
               </div>
             </CardContent>
           </Card>
@@ -756,11 +809,11 @@ export function PaymentsShippingPage() {
             <CardHeader>
               <CardTitle>Add payment</CardTitle>
             </CardHeader>
-            <CardContent>
+            <CardContent className="space-y-4 text-sm">
               <form onSubmit={handleSubmitPayment} className="space-y-4 text-sm">
                 {!activeOrderId ? (
                   <p className="text-sm text-slate-600">
-                    Select an order first to add a payment.
+                    Piliin muna ang order bago magdagdag ng bayad.
                   </p>
                 ) : (
                   <div className="grid gap-3 sm:grid-cols-2">
@@ -780,12 +833,22 @@ export function PaymentsShippingPage() {
                       />
                       {orderDetail && (
                         <p className="text-xs text-slate-600">
-                          Current balance:{" "}
+                          Natitirang balance:{" "}
                           <span className="font-semibold text-amber-700">
-                            {formatCurrency(orderDetail.order.balanceDue)}
+                            {formatCurrency(derivedBalance)}
                           </span>
                         </p>
                       )}
+                      {orderDetail && derivedBalance <= 0 ? (
+                        <p className="text-xs text-rose-600">
+                          Wala nang natitirang balance para sa order na ito.
+                        </p>
+                      ) : amountGreaterThanBalance ? (
+                        <p className="text-xs text-rose-600">
+                          Lagpas ang nilagay mong bayad sa natitirang balance (
+                          {formatCurrency(derivedBalance)}). Bawasan muna.
+                        </p>
+                      ) : null}
                     </div>
 
                     <div className="space-y-1">
@@ -824,26 +887,26 @@ export function PaymentsShippingPage() {
                       <label className="text-xs font-medium text-slate-600">
                         Reference #
                       </label>
-                      <input
-                        type="text"
-                        value={formRef}
-                        onChange={(e) => setFormRef(e.target.value)}
-                        className={CONTROL_CLASS}
-                        placeholder="GCash ref, bank ref, etc."
-                      />
+                        <input
+                          type="text"
+                          value={formRef}
+                          onChange={(e) => setFormRef(e.target.value)}
+                          className={CONTROL_CLASS}
+                          placeholder="GCash ref, bank ref, atbp."
+                        />
                     </div>
 
                     <div className="space-y-1 sm:col-span-2">
                       <label className="text-xs font-medium text-slate-600">
                         Notes
                       </label>
-                      <textarea
-                        value={formNotes}
-                        onChange={(e) => setFormNotes(e.target.value)}
-                        rows={3}
-                        className={cn(CONTROL_CLASS, "min-h-[90px]")}
-                        placeholder="Optional notes (ex: partial payment, who paid, etc.)"
-                      />
+                        <textarea
+                          value={formNotes}
+                          onChange={(e) => setFormNotes(e.target.value)}
+                          rows={3}
+                          className={cn(CONTROL_CLASS, "min-h-[90px]")}
+                          placeholder="Optional notes (hal. partial payment, sino ang nagbayad, atbp.)"
+                        />
                     </div>
 
                     <div className="flex justify-end sm:col-span-2">
@@ -851,7 +914,7 @@ export function PaymentsShippingPage() {
                         type="submit"
                         variant="primary"
                         size="md"
-                        disabled={!activeOrderId || savingPayment}
+                        disabled={disableSavePayment}
                         className="w-full sm:w-auto"
                       >
                         {savingPayment ? "Saving payment..." : "Save payment"}
@@ -872,11 +935,11 @@ export function PaymentsShippingPage() {
               <form onSubmit={handleSaveShipment} className="space-y-4 text-sm">
                 {!activeOrderId ? (
                   <p className="text-sm text-slate-600">
-                    Select an order from the queue to create or edit its shipment.
+                    Piliin ang order mula sa queue para gumawa o i-edit ang shipment.
                   </p>
                 ) : loadingOrderData ? (
                   <p className="text-sm text-slate-600">
-                    Loading shipment info...
+                    Naglo-load pa ng shipment info...
                   </p>
                 ) : (
                   <>
@@ -895,7 +958,7 @@ export function PaymentsShippingPage() {
                             Balance
                           </div>
                           <div className="mt-1 font-semibold tabular-nums text-amber-700">
-                            {formatCurrency(orderDetail.order.balanceDue)}
+                            {formatCurrency(derivedBalance)}
                           </div>
                         </div>
                         <div className="rounded-lg bg-slate-50 px-3 py-2">
@@ -904,12 +967,10 @@ export function PaymentsShippingPage() {
                           </div>
                           <div className="mt-1">
                             <Badge
-                              variant={orderPaymentBadgeVariant(
-                                orderDetail.order.paymentStatus,
-                              )}
+                              variant={orderPaymentBadgeVariant(derivedPaymentStatus)}
                               className="text-[10px] uppercase tracking-wide"
                             >
-                              {orderDetail.order.paymentStatus}
+                              {derivedPaymentStatus}
                             </Badge>
                           </div>
                         </div>
@@ -941,7 +1002,7 @@ export function PaymentsShippingPage() {
                           value={formCourier}
                           onChange={(e) => setFormCourier(e.target.value)}
                           className={CONTROL_CLASS}
-                          placeholder="J&T, JRS, LBC, etc."
+                          placeholder="J&T, JRS, LBC, atbp."
                         />
                       </div>
 
@@ -954,7 +1015,7 @@ export function PaymentsShippingPage() {
                           value={formTracking}
                           onChange={(e) => setFormTracking(e.target.value)}
                           className={CONTROL_CLASS}
-                          placeholder="Tracking number from courier"
+                          placeholder="Tracking number mula sa courier"
                         />
                       </div>
 
@@ -1040,7 +1101,7 @@ export function PaymentsShippingPage() {
                         onChange={(e) => setFormShipmentNotes(e.target.value)}
                         rows={3}
                         className={cn(CONTROL_CLASS, "min-h-[90px]")}
-                        placeholder="Optional notes (ex: rider, special instructions, RTD reason, etc.)"
+                        placeholder="Optional notes (hal. rider, special instructions, RTD reason, atbp.)"
                       />
                     </div>
 
@@ -1052,52 +1113,54 @@ export function PaymentsShippingPage() {
                         disabled={savingShipment}
                         className="w-full sm:w-auto"
                       >
-                        {savingShipment ? "Saving shipment..." : "Save shipment"}
+                    {savingShipment ? "Saving shipment..." : "Save shipment"}
+                  </Button>
+                </div>
+
+                {shipment && (
+                  <div className="space-y-3 border-t border-slate-200 pt-3 text-xs">
+                    <div className="text-xs font-medium text-slate-600">
+                      Quick status
+                    </div>
+                    <div className="flex flex-wrap gap-2">
+                      <Button
+                        size="sm"
+                        variant="secondary"
+                        disabled={updatingShipmentStatus}
+                        className="min-w-[140px] border border-slate-200 bg-white text-slate-700 hover:bg-slate-50"
+                        onClick={() => void handleQuickStatusChange("BOOKED")}
+                      >
+                        Mark as booked
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="secondary"
+                        disabled={updatingShipmentStatus}
+                        className="min-w-[140px] border border-slate-200 bg-white text-slate-700 hover:bg-slate-50"
+                        onClick={() =>
+                          void handleQuickStatusChange("IN_TRANSIT")
+                        }
+                      >
+                        Mark as in transit
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="secondary"
+                        disabled={updatingShipmentStatus}
+                        onClick={() =>
+                          void handleQuickStatusChange("DELIVERED")
+                        }
+                        className="min-w-[140px] border border-emerald-500/70 text-emerald-700 hover:bg-emerald-50"
+                      >
+                        Mark as delivered
                       </Button>
                     </div>
-
-                    {shipment && (
-                      <div className="space-y-2 border-t border-slate-200 pt-3 text-xs">
-                        <div className="text-xs font-medium text-slate-600">
-                          Quick status
-                        </div>
-                        <div className="flex flex-wrap gap-2">
-                          <Button
-                            size="sm"
-                            variant="secondary"
-                            disabled={updatingShipmentStatus}
-                            onClick={() => void handleQuickStatusChange("BOOKED")}
-                          >
-                            Mark as booked
-                          </Button>
-                          <Button
-                            size="sm"
-                            variant="secondary"
-                            disabled={updatingShipmentStatus}
-                            onClick={() =>
-                              void handleQuickStatusChange("IN_TRANSIT")
-                            }
-                          >
-                            Mark as in transit
-                          </Button>
-                          <Button
-                            size="sm"
-                            variant="secondary"
-                            disabled={updatingShipmentStatus}
-                            onClick={() =>
-                              void handleQuickStatusChange("DELIVERED")
-                            }
-                            className="border-emerald-500/70 text-emerald-700 hover:bg-emerald-50"
-                          >
-                            Mark as delivered
-                          </Button>
-                        </div>
-                        <p className="text-xs text-slate-600">
+                    <p className="text-xs text-slate-600">
                           Current status:{" "}
                           <span className="font-medium text-slate-900">
                             {shipment.status}
                           </span>{" "}
-                          | Last updated:{" "}
+                          | Huling update:{" "}
                           <span className="font-medium text-slate-900">
                             {formatDateTime(
                               shipment.deliveryDate ?? shipment.shipDate,
@@ -1117,92 +1180,95 @@ export function PaymentsShippingPage() {
               <CardTitle>Shipping queue for this session</CardTitle>
             </CardHeader>
             <CardContent className="p-0">
-              <div ref={queueListRef} className="max-h-[420px] overflow-y-auto">
-                {loadingOrders ? (
-                  <div className="px-4 py-4 text-sm text-slate-600">
-                    Loading orders...
-                  </div>
-                ) : queueOrders.length === 0 ? (
-                  <div className="px-4 py-4 text-sm text-slate-600">
-                    Walang orders pa for this session (or all are cancelled /
-                    returned).
-                  </div>
-                ) : (
-                  <div className="overflow-x-auto">
-                    <table className="min-w-full text-left text-xs">
-                      <thead className={TABLE_HEAD_CLASS}>
-                        <tr>
-                          <th className="px-3 py-2">Order #</th>
-                          <th className="px-3 py-2">Customer</th>
-                          <th className="px-3 py-2 text-right">Grand total</th>
-                          <th className="px-3 py-2 text-right">Paid</th>
-                          <th className="px-3 py-2">Payment</th>
-                          <th className="px-3 py-2">Status</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {queueOrders.map((o) => {
-                          const isActive = o.id === activeOrderId;
-                          return (
-                            <tr
-                              key={o.id}
-                              className={cn(
-                                "border-t border-slate-200 hover:bg-slate-50",
-                                isActive && "bg-emerald-50",
-                              )}
-                              onClick={() => setActiveOrderId(o.id)}
-                            >
-                              <td
+              <div className="px-4 py-4">
+                <div ref={queueListRef} className="max-h-[420px] overflow-y-auto">
+                  {loadingOrders ? (
+                    <div className="text-sm text-slate-600">
+                      Loading orders...
+                    </div>
+                  ) : queueOrders.length === 0 ? (
+                    <div className="text-sm text-slate-600">
+                      Walang orders pa for this session (or all are cancelled /
+                      returned).
+                    </div>
+                  ) : (
+                    <div className="overflow-x-auto">
+                      <table className="min-w-full text-left text-xs">
+                        <thead className={TABLE_HEAD_CLASS}>
+                          <tr>
+                            <th className="px-3 py-2">Order #</th>
+                            <th className="px-3 py-2">Customer</th>
+                            <th className="px-3 py-2 text-right">Grand total</th>
+                            <th className="px-3 py-2 text-right">Paid</th>
+                            <th className="px-3 py-2">Payment</th>
+                            <th className="px-3 py-2">Status</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {queueOrders.map((o) => {
+                            const isActive = o.id === activeOrderId;
+                            return (
+                              <tr
+                                key={o.id}
                                 className={cn(
-                                  "cursor-pointer px-3 py-2 text-[11px] font-semibold text-emerald-700",
-                                  isActive && "border-l-4 border-emerald-500",
+                                  "border-t border-slate-200 hover:bg-slate-50",
+                                  isActive && "bg-emerald-50",
                                 )}
+                                onClick={() => setActiveOrderId(o.id)}
                               >
-                                {o.orderNumber}
-                              </td>
-                              <td className="cursor-pointer px-3 py-2 text-[11px] text-slate-900">
-                                {formatCustomerLabel(
-                                  o.customerId,
-                                  customerMap[o.customerId ?? ""]?.displayName,
-                                  customerMap[o.customerId ?? ""]?.realName,
-                                )}
-                              </td>
-                              <td className="cursor-pointer px-3 py-2 text-right text-[11px] font-semibold tabular-nums text-slate-900">
-                                {formatCurrency(o.grandTotal)}
-                              </td>
-                              <td className="cursor-pointer px-3 py-2 text-right text-[11px] font-semibold tabular-nums text-slate-900">
-                                {formatCurrency(o.amountPaid)}
-                              </td>
-                              <td className="cursor-pointer px-3 py-2 text-[11px] text-slate-900">
-                                <Badge
-                                  variant={orderPaymentBadgeVariant(
-                                    o.paymentStatus,
+                                <td
+                                  className={cn(
+                                    "cursor-pointer px-3 py-2 text-[11px] font-semibold text-emerald-700",
+                                    isActive && "border-l-4 border-emerald-500",
                                   )}
-                                  className="text-[10px] uppercase tracking-wide"
                                 >
-                                  {o.paymentStatus}
-                                </Badge>
-                              </td>
-                              <td className="cursor-pointer px-3 py-2 text-[11px] text-slate-900">
-                                <Badge
-                                  variant={orderStatusBadgeVariant(o.status)}
-                                  className="text-[10px] uppercase tracking-wide"
-                                >
-                                  {o.status}
-                                </Badge>
-                              </td>
-                            </tr>
-                          );
-                        })}
-                      </tbody>
-                    </table>
-                  </div>
-                )}
+                                  {o.orderNumber}
+                                </td>
+                                <td className="cursor-pointer px-3 py-2 text-[11px] text-slate-900">
+                                  {formatCustomerLabel(
+                                    o.customerId,
+                                    customerMap[o.customerId ?? ""]?.displayName,
+                                    customerMap[o.customerId ?? ""]?.realName,
+                                  )}
+                                </td>
+                                <td className="cursor-pointer px-3 py-2 text-right text-[11px] font-semibold tabular-nums text-slate-900">
+                                  {formatCurrency(o.grandTotal)}
+                                </td>
+                                <td className="cursor-pointer px-3 py-2 text-right text-[11px] font-semibold tabular-nums text-slate-900">
+                                  {formatCurrency(o.amountPaid)}
+                                </td>
+                                <td className="cursor-pointer px-3 py-2 text-[11px] text-slate-900">
+                                  <Badge
+                                    variant={orderPaymentBadgeVariant(
+                                      o.paymentStatus,
+                                    )}
+                                    className="text-[10px] uppercase tracking-wide"
+                                  >
+                                    {o.paymentStatus}
+                                  </Badge>
+                                </td>
+                                <td className="cursor-pointer px-3 py-2 text-[11px] text-slate-900">
+                                  <Badge
+                                    variant={orderStatusBadgeVariant(o.status)}
+                                    className="text-[10px] uppercase tracking-wide"
+                                  >
+                                    {o.status}
+                                  </Badge>
+                                </td>
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+                </div>
               </div>
             </CardContent>
           </Card>
         </div>
       </div>
+    </div>
 
       {loadingSessions && (
         <Card className="bg-slate-50">
