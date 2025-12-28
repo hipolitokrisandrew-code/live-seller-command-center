@@ -1159,7 +1159,7 @@ export function OrdersPage() {
             <div className="flex flex-col items-start gap-1 lg:items-end">
               <Button
                 variant="primary"
-                onClick={handleBuildFromClaims}
+                onClick={() => void handleBuildFromClaims()}
                 disabled={!activeSessionId || building}
                 data-tour="orders-build"
                 className="w-full sm:w-auto"

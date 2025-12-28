@@ -113,12 +113,16 @@ export function SettingsPage() {
   async function handleLogoFileChange(file: File | null) {
     if (!form) return;
     if (!file) {
-      setForm((prev) => (prev ? { ...prev, logoUrl: "" } : prev));
+      setForm((prev: SettingsFormState | null) =>
+        prev ? { ...prev, logoUrl: "" } : prev
+      );
       return;
     }
     try {
       const dataUrl = await fileToDataUrl(file);
-      setForm((prev) => (prev ? { ...prev, logoUrl: dataUrl } : prev));
+      setForm((prev: SettingsFormState | null) =>
+        prev ? { ...prev, logoUrl: dataUrl } : prev
+      );
     } catch (err) {
       console.error(err);
       setError("Failed to load logo image.");

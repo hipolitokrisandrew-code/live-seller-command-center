@@ -232,9 +232,10 @@ export async function updateInventoryItem(
     }
   }
 
-  const isVariantEdit = Array.isArray(changes.variants);
+  const incomingVariants = changes.variants;
+  const isVariantEdit = Array.isArray(incomingVariants);
   const nextVariants = isVariantEdit
-    ? changes.variants.map((variant) => {
+    ? incomingVariants.map((variant) => {
         const existingVariant = existing.variants?.find(
           (v) => v.id === variant.id
         );

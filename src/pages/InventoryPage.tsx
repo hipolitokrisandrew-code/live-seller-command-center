@@ -6,6 +6,7 @@ import {
   listInventoryItems,
   updateInventoryItem,
   getStockStatus,
+  type UpdateInventoryItemInput,
 } from "../services/inventory.service";
 import {
   getItemImage,
@@ -478,7 +479,7 @@ export function InventoryPage() {
     try {
       let savedItem: InventoryItem | undefined;
       if (isEditing && form.id) {
-        const updates = {
+        const updates: UpdateInventoryItemInput = {
           itemCode: form.itemCode.trim(),
           name: form.name.trim(),
           category: form.category.trim() || undefined,
@@ -490,7 +491,7 @@ export function InventoryPage() {
           initialStock: variants.length ? totalVariantStock : initialStock,
         };
         if (!variants.length) {
-          (updates as { currentStock: number }).currentStock =
+          updates.currentStock =
             numericInitialStock;
         }
         savedItem = await updateInventoryItem(form.id, updates);

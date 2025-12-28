@@ -112,11 +112,6 @@ export function PaymentsPage() {
     [filteredOrders, activeOrderId]
   );
 
-  const paymentsListRef = useScrollRetention<HTMLDivElement>(
-    !loadingOrderDetail,
-    [loadingOrderDetail, filteredPayments.length, activeOrderId]
-  );
-
   useEffect(() => {
     void (async () => {
       try {
@@ -140,6 +135,16 @@ export function PaymentsPage() {
       }
     })();
   }, [ensureValidSession]);
+
+  const filteredPayments = useMemo(() => {
+    if (paymentMethodFilter === "ALL") return payments;
+    return payments.filter((p) => p.method === paymentMethodFilter);
+  }, [payments, paymentMethodFilter]);
+
+  const paymentsListRef = useScrollRetention<HTMLDivElement>(
+    !loadingOrderDetail,
+    [loadingOrderDetail, filteredPayments.length, activeOrderId]
+  );
 
   const refreshOrdersForSession = useCallback(async (sessionId: string) => {
     try {
@@ -316,11 +321,6 @@ export function PaymentsPage() {
     }
     return counts;
   }, [payments]);
-
-  const filteredPayments = useMemo(() => {
-    if (paymentMethodFilter === "ALL") return payments;
-    return payments.filter((p) => p.method === paymentMethodFilter);
-  }, [payments, paymentMethodFilter]);
 
   return (
     <div className="space-y-4">

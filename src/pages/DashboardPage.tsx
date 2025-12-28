@@ -14,12 +14,8 @@ import {
   Card,
   CardContent,
 } from "../components/ui/Card";
-import {
-  PlatformOption,
-  PeriodPlatformFilterCard,
-  RangePreset,
-  rangeLabel,
-} from "../components/filters/PeriodPlatformFilterCard";
+import { PeriodPlatformFilterCard, rangeLabel } from "../components/filters/PeriodPlatformFilterCard";
+import type { PlatformOption, RangePreset } from "../components/filters/PeriodPlatformFilterCard";
 import { PH_COPY } from "../ui/copy/ph";
 
 function cn(...classes: Array<string | false | null | undefined>) {
