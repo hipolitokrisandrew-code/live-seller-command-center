@@ -129,11 +129,10 @@ function summarizeOrderLines(lines: OrderLine[]): string {
 export async function getDashboardSummary(
   params?: DashboardSummaryInput
 ): Promise<DashboardSummary> {
-  const [orders, inventory, sessions, orderLines, customers] = await Promise.all([
+  const [orders, inventory, sessions, customers] = await Promise.all([
     db.orders.toArray(),
     db.inventory.toArray(),
     db.liveSessions.toArray(),
-    db.orderLines.toArray(),
     db.customers.toArray(),
   ]);
 
@@ -212,6 +211,25 @@ export async function getDashboardSummary(
   const lowStockCount = lowStockAll.length;
 
   // 5) Recent live sessions - revenue & profit
+  const relevantOrderIds = new Set<string>();
+  pendingOrders.forEach((order) => relevantOrderIds.add(order.id));
+  toShipOrders.forEach((order) => relevantOrderIds.add(order.id));
+  const paidSessionOrders = orders.filter(
+    (order) =>
+      order.liveSessionId &&
+      order.paymentStatus === "PAID" &&
+      order.grandTotal > 0
+  );
+  paidSessionOrders.forEach((order) => relevantOrderIds.add(order.id));
+
+  const orderLines =
+    relevantOrderIds.size > 0
+      ? await db.orderLines
+          .where("orderId")
+          .anyOf(Array.from(relevantOrderIds))
+          .toArray()
+      : [];
+
   const linesByOrderId = new Map<string, OrderLine[]>();
   orderLines.forEach((line) => {
     const existing = linesByOrderId.get(line.orderId);

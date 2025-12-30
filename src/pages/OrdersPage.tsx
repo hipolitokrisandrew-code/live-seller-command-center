@@ -165,6 +165,18 @@ function buildInvoiceHtml(params: {
   const safeShippingCourier = shippingCourier
     ? escapeHtml(shippingCourier)
     : "-";
+  const otherFeesNote = order.otherFeesNote?.trim() ?? "";
+  const safeOtherFeesNote = otherFeesNote ? escapeHtml(otherFeesNote) : "";
+  const otherFeesLabel = safeOtherFeesNote
+    ? `Other fees (${safeOtherFeesNote})`
+    : "Other fees";
+  const otherFeesRow =
+    (order.otherFees ?? 0) > 0 || safeOtherFeesNote
+      ? `<tr>
+              <td class="label">${otherFeesLabel}</td>
+              <td class="value">${formatCurrency(order.otherFees ?? 0)}</td>
+            </tr>`
+      : "";
   const vatLabel = vatEnabled
     ? `VAT (${formatPercent(vatRatePct)}%) Included`
     : "VAT";
@@ -225,6 +237,54 @@ function buildInvoiceHtml(params: {
         border-radius: 16px;
         padding: 28px 32px;
         background: #ffffff;
+      }
+      .invoice-controls {
+        position: fixed;
+        top: 0;
+        left: 0;
+        right: 0;
+        z-index: 999;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 0.75rem;
+        padding: 0.85rem 1.75rem;
+        background: #ffffff;
+        border-bottom: 1px solid var(--line);
+        box-shadow: 0 6px 18px rgba(15, 23, 42, 0.15);
+      }
+      .controls-title {
+        font-size: 12px;
+        font-weight: 600;
+        letter-spacing: 0.16em;
+        text-transform: uppercase;
+        color: #0f172a;
+      }
+      .controls-actions {
+        display: flex;
+        gap: 0.75rem;
+      }
+      .control-btn {
+        border: 1px solid var(--line);
+        border-radius: 999px;
+        padding: 0.4rem 0.95rem;
+        font-size: 12px;
+        font-weight: 600;
+        background: #ffffff;
+        color: #0f172a;
+        cursor: pointer;
+        transition: border-color 0.2s ease, background 0.2s ease;
+      }
+      .control-btn.primary {
+        background: var(--accent);
+        color: #ffffff;
+        border-color: var(--accent-strong);
+      }
+      .control-btn:hover {
+        border-color: var(--accent-strong);
+      }
+      body.has-controls {
+        padding-top: 92px;
       }
       .invoice-header {
         display: flex;
@@ -451,7 +511,7 @@ function buildInvoiceHtml(params: {
       }
     </style>
   </head>
-  <body class="${templateClass}">
+  <body class="${templateClass} has-controls">
     <div class="invoice">
       <div class="invoice-header">
         <div class="brand-block">
@@ -546,6 +606,7 @@ function buildInvoiceHtml(params: {
               <td class="label">Shipping + COD</td>
               <td class="value">${formatCurrency(shipping)}</td>
             </tr>
+            ${otherFeesRow}
             <tr>
               <td class="label">${vatLabel}</td>
               <td class="value">${vatDisplay}</td>
@@ -567,6 +628,34 @@ function buildInvoiceHtml(params: {
         </div>
       </div>
     </div>
+    <div
+      class="invoice-controls"
+      role="navigation"
+      aria-label="Invoice navigation"
+    >
+      <div class="controls-title">Invoice</div>
+      <div class="controls-actions">
+        <button type="button" class="control-btn" onclick="goBack()">
+          Back
+        </button>
+        <button type="button" class="control-btn primary" onclick="printInvoice()">
+          Print / Download
+        </button>
+      </div>
+    </div>
+    <script>
+      function goBack() {
+        if (history.length > 1) {
+          history.back();
+        } else {
+          window.location.assign("/");
+        }
+      }
+
+      function printInvoice() {
+        window.print();
+      }
+    </script>
   </body>
 </html>`;
 }
@@ -646,6 +735,7 @@ export function OrdersPage() {
 
   const [orders, setOrders] = useState<Order[]>([]);
   const [selectedOrderId, setSelectedOrderId] = useState<string | null>(null);
+  const selectedOrderIdRef = useRef<string | null>(null);
   const [selectedDetail, setSelectedDetail] = useState<OrderDetail | null>(
     null
   );
@@ -677,6 +767,10 @@ export function OrdersPage() {
   >({});
 
   useEffect(() => {
+    selectedOrderIdRef.current = selectedOrderId;
+  }, [selectedOrderId]);
+
+  useEffect(() => {
     void (async () => {
       try {
         setLoadingSessions(true);
@@ -700,7 +794,7 @@ export function OrdersPage() {
   }, [ensureValidSession]);
 
   const refreshOrders = useCallback(
-    async (sessionId: string, preferOrderId?: string) => {
+    async (sessionId: string, preferOrderId?: string | null) => {
       try {
         setLoadingOrders(true);
         setError(null);
@@ -708,7 +802,7 @@ export function OrdersPage() {
         const list = await listOrdersForSession(sessionId);
         setOrders(list);
 
-        const existingId = preferOrderId ?? selectedOrderId;
+        const existingId = preferOrderId ?? selectedOrderIdRef.current;
         const fallbackId = list[0]?.id ?? null;
         const nextId =
           existingId && list.some((o) => o.id === existingId)
@@ -730,7 +824,7 @@ export function OrdersPage() {
         setLoadingOrders(false);
       }
     },
-    [selectedOrderId]
+    []
   );
 
   useEffect(() => {
@@ -1162,9 +1256,12 @@ export function OrdersPage() {
           </div>
 
           <div className="grid gap-2">
-            <div className="flex items-center gap-2" data-tour="orders-payment-filter">
+            <div
+              className="flex flex-col gap-2 sm:flex-row sm:items-center"
+              data-tour="orders-payment-filter"
+            >
               <span className="text-xs font-medium text-slate-600">Payment</span>
-              <div className="flex max-w-full gap-2 overflow-x-auto pb-1">
+              <div className="flex flex-wrap max-w-full gap-2 overflow-x-auto pb-1">
                 {(["ALL", "UNPAID", "PARTIAL", "PAID"] as const).map((p) => {
                   const active =
                     paymentFilter === p ||
@@ -1206,9 +1303,12 @@ export function OrdersPage() {
               </div>
             </div>
 
-            <div className="flex items-center gap-2" data-tour="orders-status-filter">
+            <div
+              className="flex flex-col gap-2 sm:flex-row sm:items-center"
+              data-tour="orders-status-filter"
+            >
               <span className="text-xs font-medium text-slate-600">Status</span>
-              <div className="flex max-w-full gap-2 overflow-x-auto pb-1">
+              <div className="flex flex-wrap max-w-full gap-2 overflow-x-auto pb-1">
                 {(
                   [
                     "ALL",

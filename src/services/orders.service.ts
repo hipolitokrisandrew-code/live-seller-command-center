@@ -523,6 +523,7 @@ export async function buildOrdersFromClaims(liveSessionId: string): Promise<{
         shippingFee: 0,
         codFee: 0,
         otherFees: 0,
+        otherFeesNote: "",
         grandTotal: 0,
         amountPaid: 0,
         balanceDue: 0,
@@ -615,7 +616,10 @@ export async function updateOrderDiscount(
 export async function updateOrderFees(
   orderId: string,
   patch: Partial<
-    Pick<Order, "shippingFee" | "codFee" | "otherFees" | "promoDiscountTotal">
+    Pick<
+      Order,
+      "shippingFee" | "codFee" | "otherFees" | "otherFeesNote" | "promoDiscountTotal"
+    >
   >
 ): Promise<Order> {
   const order = await db.orders.get(orderId);

@@ -1,10 +1,11 @@
 /* eslint-disable react-hooks/set-state-in-effect */
 import type { FormEvent } from "react";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { Order, Payment, Shipment } from "../core/types";
 import { useOrderPaymentsAndShipping } from "../hooks/useOrderPaymentsAndShipping";
 import { usePaymentsShippingTutorial } from "../hooks/usePaymentsShippingTutorial";
 import { useScrollRetention } from "../hooks/useScrollRetention";
+import { updateOrderFees } from "../services/orders.service";
 import { Page } from "../components/layout/Page";
 import { Badge } from "../components/ui/Badge";
 import { Button } from "../components/ui/Button";
@@ -30,6 +31,14 @@ const TABLE_HEAD_CLASS =
 
 const CONTROL_CLASS =
   "h-9 w-full rounded-md border border-slate-200 bg-white px-3 text-sm text-slate-900 shadow-sm focus:border-emerald-500 focus:outline-none focus:ring-2 focus:ring-emerald-500/30";
+
+const PANEL_CARD_CLASS = "w-full min-w-0";
+const PANEL_HEADER_CLASS = "border-b-0 px-4 pt-3 pb-0";
+const PANEL_TITLE_CLASS = "text-xs font-medium text-slate-600";
+const PANEL_CONTENT_CLASS = "pt-2";
+const PANEL_BODY_WRAP_CLASS = "px-4 py-3";
+const SUMMARY_VALUE_CLASS =
+  "mt-1 font-semibold tabular-nums leading-tight text-[clamp(0.65rem,3.4vw,0.95rem)]";
 
 function formatCurrency(value: number | undefined | null): string {
   const num = Number.isFinite(value as number) ? (value as number) : 0;
@@ -132,6 +141,8 @@ export function PaymentsShippingPage() {
     infoMessage,
     setError,
     setInfoMessage,
+    refreshOrdersForSession,
+    refreshOrderData,
     addPayment,
     voidExistingPayment,
     saveShipmentDetails,
@@ -152,13 +163,15 @@ export function PaymentsShippingPage() {
   const [formNotes, setFormNotes] = useState("");
 
   const [formCourier, setFormCourier] = useState("");
-  const [formTracking, setFormTracking] = useState("");
   const [formShippingFee, setFormShippingFee] = useState("");
-  const [formStatus, setFormStatus] = useState<Shipment["status"]>("PENDING");
   const [formBookingDate, setFormBookingDate] = useState("");
-  const [formShipDate, setFormShipDate] = useState("");
-  const [formDeliveryDate, setFormDeliveryDate] = useState("");
   const [formShipmentNotes, setFormShipmentNotes] = useState("");
+  const [formVisible, setFormVisible] = useState(false);
+  const [formSection, setFormSection] = useState<"payment" | "shipment">("payment");
+  const [formOtherFees, setFormOtherFees] = useState("");
+  const [formOtherFeesNote, setFormOtherFeesNote] = useState("");
+  const paymentSectionRef = useRef<HTMLDivElement | null>(null);
+  const shipmentSectionRef = useRef<HTMLDivElement | null>(null);
 
   const activeSession = useMemo(
     () => sessions.find((s) => s.id === activeSessionId),
@@ -249,12 +262,15 @@ export function PaymentsShippingPage() {
   const amountGreaterThanBalance =
     derivedBalance > 0 && parsedFormAmount > derivedBalance;
 
-  const disableSavePayment =
-    !activeOrderId ||
-    savingPayment ||
-    parsedFormAmount <= 0 ||
-    derivedBalance <= 0 ||
-    amountGreaterThanBalance;
+  const openPaymentModal = () => {
+    setFormSection("payment");
+    setFormVisible(true);
+  };
+
+  const openShipmentModal = () => {
+    setFormSection("shipment");
+    setFormVisible(true);
+  };
 
 
   useEffect(() => {
@@ -268,6 +284,31 @@ export function PaymentsShippingPage() {
   }, [filteredOrders, activeOrderId, setActiveOrderId]);
 
   useEffect(() => {
+    if (!activeOrderId) {
+      setFormVisible(false);
+    }
+  }, [activeOrderId]);
+
+  useEffect(() => {
+    if (!formVisible) return;
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        setFormVisible(false);
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [formVisible]);
+
+  useEffect(() => {
+    if (!formVisible) return;
+    const target =
+      formSection === "payment" ? paymentSectionRef.current : shipmentSectionRef.current;
+    if (!target) return;
+    target.scrollIntoView({ behavior: "smooth", block: "start" });
+  }, [formVisible, formSection]);
+
+  useEffect(() => {
     if (!orderDetail) return;
     setFormAmount(
       derivedBalance > 0
@@ -279,41 +320,45 @@ export function PaymentsShippingPage() {
   useEffect(() => {
     if (!activeOrderId) {
       setFormCourier("");
-      setFormTracking("");
       setFormShippingFee("");
-      setFormStatus("PENDING");
       setFormBookingDate("");
-      setFormShipDate("");
-      setFormDeliveryDate("");
       setFormShipmentNotes("");
+      setFormOtherFees("");
+      setFormOtherFeesNote("");
       return;
     }
     if (!shipment) {
       setFormCourier("");
-      setFormTracking("");
       setFormShippingFee("");
-      setFormStatus("PENDING");
       setFormBookingDate(todayDateInput());
-      setFormShipDate("");
-      setFormDeliveryDate("");
       setFormShipmentNotes("");
       return;
     }
     setFormCourier(shipment.courier ?? "");
-    setFormTracking(shipment.trackingNumber ?? "");
     setFormShippingFee(
       Number.isFinite(shipment.shippingFee as number)
         ? (shipment.shippingFee as number).toFixed(2)
         : ""
     );
-    setFormStatus(shipment.status);
     setFormBookingDate(shipment.bookingDate?.slice(0, 10) ?? "");
-    setFormShipDate(shipment.shipDate?.slice(0, 10) ?? "");
-    setFormDeliveryDate(shipment.deliveryDate?.slice(0, 10) ?? "");
     setFormShipmentNotes(shipment.notes ?? "");
   }, [shipment, activeOrderId]);
 
-  async function handleSubmitPayment(e: FormEvent) {
+  useEffect(() => {
+    if (!orderDetail) {
+      setFormOtherFees("");
+      setFormOtherFeesNote("");
+      return;
+    }
+    setFormOtherFees(
+      Number.isFinite(orderDetail.order.otherFees as number)
+        ? (orderDetail.order.otherFees as number).toFixed(2)
+        : ""
+    );
+    setFormOtherFeesNote(orderDetail.order.otherFeesNote ?? "");
+  }, [orderDetail]);
+
+  async function handleSavePaymentAndShipment(e: FormEvent) {
     e.preventDefault();
     setError(null);
     setInfoMessage(null);
@@ -323,40 +368,99 @@ export function PaymentsShippingPage() {
       return;
     }
 
-    const raw = formAmount.replace(/,/g, "").trim();
-    const amount = parseFloat(raw);
+    const isPaymentMode = formSection === "payment";
+    const isShipmentMode = formSection === "shipment";
+    let feeValue = 0;
+    let otherFeeValue = 0;
+    let otherFeeNote = "";
 
-    if (!Number.isFinite(amount) || amount <= 0) {
-      setError("Maglagay ng bayad na higit sa ₱0.00.");
-      return;
-    }
-
-    if (derivedBalance <= 0) {
-      setError("Wala nang natitirang balance para sa order na ito.");
-      return;
-    }
-
-    if (amount > derivedBalance) {
-      setError(
-        `Lagpas ang bayad sa natitirang balance (${formatCurrency(
-          derivedBalance,
-        )}). Bawasan muna.`,
+    if (isShipmentMode) {
+      feeValue = parseFloat(
+        formShippingFee.replace(/,/g, "").trim() || "0"
       );
-      return;
+      if (!Number.isFinite(feeValue) || feeValue < 0) {
+        setError("Please enter a valid shipping fee (0 or above).");
+        return;
+      }
+
+      otherFeeValue = parseFloat(
+        formOtherFees.replace(/,/g, "").trim() || "0"
+      );
+      if (!Number.isFinite(otherFeeValue) || otherFeeValue < 0) {
+        setError("Please enter a valid other fee (0 or above).");
+        return;
+      }
+      otherFeeNote = formOtherFeesNote.trim();
     }
 
-    const dateIso = formDate ? new Date(formDate).toISOString() : undefined;
+    let amount = 0;
+    if (isPaymentMode) {
+      const raw = formAmount.replace(/,/g, "").trim();
+      amount = parseFloat(raw);
+      if (!Number.isFinite(amount) || amount <= 0) {
+        setError("Please enter a payment amount above 0.");
+        return;
+      }
+      if (derivedBalance <= 0) {
+        setError("Wala nang natitirang balance para sa order na ito.");
+        return;
+      }
+      if (amount > derivedBalance) {
+        setError(
+          `Lagpas ang bayad sa natitirang balance (${formatCurrency(
+            derivedBalance,
+          )}). Bawasan muna.`,
+        );
+        return;
+      }
+    }
 
-    await addPayment({
-      amount,
-      method: formMethod,
-      date: dateIso,
-      referenceNumber: formRef.trim() || undefined,
-      notes: formNotes.trim() || undefined,
-    });
+    try {
+      if (isPaymentMode) {
+        const dateIso = formDate ? new Date(formDate).toISOString() : undefined;
+        await addPayment(
+          {
+            amount,
+            method: formMethod,
+            date: dateIso,
+            referenceNumber: formRef.trim() || undefined,
+            notes: formNotes.trim() || undefined,
+          },
+          { suppressInfo: true },
+        );
+        setFormRef("");
+        setFormNotes("");
+      }
 
-    setFormRef("");
-    setFormNotes("");
+      if (isShipmentMode) {
+        await saveShipmentDetails(
+          {
+            courier: formCourier || "",
+            shippingFee: feeValue,
+            bookingDate: formBookingDate
+              ? new Date(formBookingDate).toISOString()
+              : undefined,
+            notes: formShipmentNotes || undefined,
+          },
+          { suppressInfo: true },
+        );
+
+        await updateOrderFees(activeOrderId, {
+          otherFees: otherFeeValue,
+          otherFeesNote: otherFeeNote,
+        });
+      }
+
+      await refreshOrderData(activeOrderId);
+      if (activeSessionId) {
+        await refreshOrdersForSession(activeSessionId);
+      }
+
+      setInfoMessage(isPaymentMode ? "Payment saved." : "Shipment saved.");
+      setFormVisible(false);
+    } catch (e) {
+      console.error(e);
+    }
   }
 
   async function handleVoidPayment(payment: Payment) {
@@ -368,54 +472,18 @@ export function PaymentsShippingPage() {
     await voidExistingPayment(payment.id);
   }
 
-  async function handleSaveShipment(e: FormEvent) {
-    e.preventDefault();
-    setError(null);
-    setInfoMessage(null);
-
-    if (!activeOrderId) {
-      setError("Please select an order first.");
-      return;
-    }
-
-    const feeValue = parseFloat(
-      formShippingFee.replace(/,/g, "").trim() || "0"
-    );
-    if (!Number.isFinite(feeValue) || feeValue < 0) {
-      setError("Please enter a valid shipping fee (0 or above).");
-      return;
-    }
-
-    await saveShipmentDetails({
-      courier: formCourier || "",
-      trackingNumber: formTracking || "",
-      shippingFee: feeValue,
-      status: formStatus,
-      bookingDate: formBookingDate
-        ? new Date(formBookingDate).toISOString()
-        : undefined,
-      shipDate: formShipDate
-        ? new Date(formShipDate).toISOString()
-        : undefined,
-      deliveryDate: formDeliveryDate
-        ? new Date(formDeliveryDate).toISOString()
-        : undefined,
-      notes: formShipmentNotes || undefined,
-    });
-  }
-
   async function handleQuickStatusChange(status: Shipment["status"]) {
     setError(null);
     setInfoMessage(null);
     await quickUpdateShipmentStatus(status);
   }
   return (
-    <Page className="space-y-6">
-      <div className="max-w-7xl mx-auto space-y-6 px-3 sm:px-4">
-      <Card>
+    <Page className="w-full max-w-none min-w-0 space-y-6">
+      <div className="space-y-6">
+      <Card className={PANEL_CARD_CLASS}>
         <CardContent className="grid gap-4 md:grid-cols-2 items-start">
           <div
-            className="space-y-3 md:pr-6 md:border-r md:border-slate-200"
+            className="min-w-0 space-y-3 md:pr-6 md:border-r md:border-slate-200"
             data-tour="payments-shipping-session"
           >
             <label className="text-xs font-medium text-slate-600">
@@ -457,7 +525,7 @@ export function PaymentsShippingPage() {
             )}
           </div>
 
-          <div className="space-y-3 md:pl-6" data-tour="payments-shipping-order">
+          <div className="min-w-0 space-y-3 md:pl-6" data-tour="payments-shipping-order">
             <div className="space-y-2">
               <label className="text-xs font-medium text-slate-600">Order</label>
               <select
@@ -560,21 +628,21 @@ export function PaymentsShippingPage() {
       )}
 
       <div className="grid gap-6 lg:grid-cols-12">
-        <div className="space-y-6 lg:col-span-6">
-          <Card data-tour="payments-shipping-summary">
-            <CardHeader>
-              <CardTitle>Order summary</CardTitle>
+        <div className="space-y-6 lg:col-span-12">
+          <Card data-tour="payments-shipping-summary" className={PANEL_CARD_CLASS}>
+            <CardHeader className={PANEL_HEADER_CLASS}>
+              <CardTitle className={PANEL_TITLE_CLASS}>Order summary</CardTitle>
             </CardHeader>
             {loadingOrderData ? (
-              <div className="px-4 py-4 text-sm text-slate-600">
+              <div className={cn(PANEL_BODY_WRAP_CLASS, "text-sm text-slate-600")}>
                 Naglo-load pa ng detalye ng order...
               </div>
             ) : !orderDetail ? (
-              <div className="px-4 py-4 text-sm text-slate-600">
+              <div className={cn(PANEL_BODY_WRAP_CLASS, "text-sm text-slate-600")}>
                 Piliin ang order para makita ang kabuuan at mga bayad.
               </div>
             ) : (
-              <CardContent className="space-y-4 text-sm">
+              <CardContent className={cn(PANEL_CONTENT_CLASS, "space-y-4 text-sm")}>
                 <div className="flex flex-wrap items-start justify-between gap-3">
                   <div>
                     <div className="text-xs font-medium text-slate-600">
@@ -602,13 +670,12 @@ export function PaymentsShippingPage() {
                     </div>
                   </div>
                 </div>
-
-                  <div className="grid grid-cols-2 gap-3 sm:grid-cols-2 lg:grid-cols-3 text-xs">
+                <div className="grid grid-cols-2 gap-3 sm:grid-cols-2 lg:grid-cols-3 text-xs">
                   <div className="rounded-lg bg-slate-50 px-3 py-2">
                     <div className="text-xs font-medium text-slate-600">
                       Subtotal
                     </div>
-                    <div className="mt-1 font-semibold tabular-nums text-slate-900">
+                    <div className={cn(SUMMARY_VALUE_CLASS, "text-slate-900")}>
                       {formatCurrency(orderDetail.order.subtotal)}
                     </div>
                   </div>
@@ -616,7 +683,7 @@ export function PaymentsShippingPage() {
                     <div className="text-xs font-medium text-slate-600">
                       Discounts
                     </div>
-                    <div className="mt-1 font-semibold tabular-nums text-slate-900">
+                    <div className={cn(SUMMARY_VALUE_CLASS, "text-slate-900")}>
                       {formatCurrency(
                         (orderDetail.order.discountTotal ?? 0) +
                           (orderDetail.order.promoDiscountTotal ?? 0),
@@ -627,7 +694,7 @@ export function PaymentsShippingPage() {
                     <div className="text-xs font-medium text-slate-600">
                       Shipping + COD
                     </div>
-                    <div className="mt-1 font-semibold tabular-nums text-slate-900">
+                    <div className={cn(SUMMARY_VALUE_CLASS, "text-slate-900")}>
                       {formatCurrency(
                         (orderDetail.order.shippingFee ?? 0) +
                           (orderDetail.order.codFee ?? 0),
@@ -638,15 +705,20 @@ export function PaymentsShippingPage() {
                     <div className="text-xs font-medium text-slate-600">
                       Other fees
                     </div>
-                    <div className="mt-1 font-semibold tabular-nums text-slate-900">
+                    <div className={cn(SUMMARY_VALUE_CLASS, "text-slate-900")}>
                       {formatCurrency(orderDetail.order.otherFees)}
                     </div>
+                    {orderDetail.order.otherFeesNote ? (
+                      <div className="text-[10px] text-slate-500">
+                        {orderDetail.order.otherFeesNote}
+                      </div>
+                    ) : null}
                   </div>
                   <div className="rounded-lg bg-slate-50 px-3 py-2">
                     <div className="text-xs font-medium text-slate-600">
                       Grand total
                     </div>
-                    <div className="mt-1 font-semibold tabular-nums text-emerald-700">
+                    <div className={cn(SUMMARY_VALUE_CLASS, "text-emerald-700")}>
                       {formatCurrency(orderDetail.order.grandTotal)}
                     </div>
                   </div>
@@ -654,40 +726,408 @@ export function PaymentsShippingPage() {
                     <div className="text-xs font-medium text-slate-600">
                       Paid
                     </div>
-                    <div className="mt-1 font-semibold tabular-nums text-slate-900">
+                    <div className={cn(SUMMARY_VALUE_CLASS, "text-slate-900")}>
                       {formatCurrency(orderDetail.order.amountPaid)}
                     </div>
                   </div>
-                        <div className="rounded-lg bg-slate-50 px-3 py-2">
-                          <div className="text-xs font-medium text-slate-600">
-                            Balance
-                          </div>
-                          <div className="mt-1 font-semibold tabular-nums text-amber-700">
-                            {formatCurrency(derivedBalance)}
-                          </div>
-                        </div>
-                        <div className="rounded-lg bg-slate-50 px-3 py-2">
-                          <div className="text-xs font-medium text-slate-600">
-                            Payment status
-                          </div>
-                          <div className="mt-1">
-                            <Badge
-                              variant={orderPaymentBadgeVariant(derivedPaymentStatus)}
-                              className="text-[10px] uppercase tracking-wide"
-                            >
-                              {derivedPaymentStatus}
-                            </Badge>
-                          </div>
-                        </div>
+                  <div className="rounded-lg bg-slate-50 px-3 py-2">
+                    <div className="text-xs font-medium text-slate-600">
+                      Balance
+                    </div>
+                    <div className={cn(SUMMARY_VALUE_CLASS, "text-amber-700")}>
+                      {formatCurrency(derivedBalance)}
+                    </div>
+                  </div>
+                  <div className="rounded-lg bg-slate-50 px-3 py-2">
+                    <div className="text-xs font-medium text-slate-600">
+                      Payment status
+                    </div>
+                    <div className="mt-1">
+                      <Badge
+                        variant={orderPaymentBadgeVariant(derivedPaymentStatus)}
+                        className="text-[10px] uppercase tracking-wide"
+                      >
+                        {derivedPaymentStatus}
+                      </Badge>
+                    </div>
+                  </div>
                 </div>
               </CardContent>
             )}
           </Card>
 
-          <Card data-tour="payments-shipping-payments">
-            <CardHeader className="flex flex-col items-start gap-3 sm:flex-row sm:items-center sm:justify-between">
-              <CardTitle>Payments for this order</CardTitle>
-              <div className="flex max-w-full items-center gap-2 overflow-x-auto pb-1 text-xs text-slate-600">
+          <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center">
+            <Button
+              variant="primary"
+              size="cta"
+              onClick={openShipmentModal}
+              disabled={!activeOrderId}
+              className="w-full sm:w-auto"
+            >
+              + Record shipment
+            </Button>
+            <Button
+              variant="primary"
+              size="cta"
+              onClick={openPaymentModal}
+              disabled={!activeOrderId}
+              className="w-full sm:w-auto"
+            >
+              + Record payment
+            </Button>
+          </div>
+
+          {formVisible && (
+            <div
+              className="fixed inset-0 z-[70] flex items-center justify-center bg-black/40 px-4"
+              onClick={() => setFormVisible(false)}
+            >
+              <div
+                className="flex max-h-[90vh] w-[95vw] max-w-5xl flex-col overflow-hidden rounded-lg border border-slate-200 bg-white shadow-2xl"
+                data-tour="payments-shipping-add-payment"
+                role="dialog"
+                aria-modal="true"
+                aria-labelledby="payments-shipping-modal-title"
+                aria-describedby="payments-shipping-modal-helper"
+                onClick={(event) => event.stopPropagation()}
+              >
+                <div className="flex items-start justify-between border-b border-slate-200 px-6 py-4">
+                  <div>
+                    <h2
+                      id="payments-shipping-modal-title"
+                      className="text-lg font-semibold text-slate-900"
+                    >
+                      {formSection === "payment" ? "Payment" : "Shipment"}
+                    </h2>
+                    <p
+                      id="payments-shipping-modal-helper"
+                      className="mt-1 text-xs text-slate-600"
+                    >
+                      {formSection === "payment"
+                        ? "Save payment info in a single step."
+                        : "Save shipment info in a single step."}
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setFormVisible(false)}
+                    className="rounded-md border border-slate-200 px-2 py-1 text-xs text-slate-700 hover:bg-slate-100"
+                  >
+                    Close
+                  </button>
+                </div>
+                <form
+                  onSubmit={handleSavePaymentAndShipment}
+                  className="flex min-h-0 flex-1 flex-col text-sm"
+                >
+                  <div className="flex-1 overflow-y-auto px-6 py-4">
+                    {!activeOrderId ? (
+                      <p className="text-sm text-slate-600">
+                        Piliin muna ang order bago mag-update ng payment at
+                        shipment.
+                      </p>
+                    ) : loadingOrderData ? (
+                      <p className="text-sm text-slate-600">
+                        Naglo-load pa ng order data...
+                      </p>
+                    ) : (
+                      <div className="space-y-4">
+                        {formSection === "payment" && (
+                          <div
+                            ref={paymentSectionRef}
+                            className="space-y-3 rounded-lg border border-slate-200 bg-white p-3"
+                          >
+                            <div className="text-xs font-medium text-slate-600">
+                              Payment
+                            </div>
+                            <div className="grid gap-3 sm:grid-cols-2">
+                              <div className="space-y-1">
+                                <label className="text-xs font-medium text-slate-600">
+                                  Amount <span className="text-rose-500">*</span>
+                                </label>
+                                <input
+                                  type="number"
+                                  min="0"
+                                  step="0.01"
+                                  inputMode="decimal"
+                                  value={formAmount}
+                                  onChange={(e) => setFormAmount(e.target.value)}
+                                  className={CONTROL_CLASS}
+                                  placeholder="0.00"
+                                />
+                                {orderDetail && (
+                                  <p className="text-xs text-slate-600">
+                                    Natitirang balance:{" "}
+                                    <span className="font-semibold text-amber-700">
+                                      {formatCurrency(derivedBalance)}
+                                    </span>
+                                  </p>
+                                )}
+                                {orderDetail && derivedBalance <= 0 ? (
+                                  <p className="text-xs text-rose-600">
+                                    Wala nang natitirang balance para sa order na ito.
+                                  </p>
+                                ) : amountGreaterThanBalance ? (
+                                  <p className="text-xs text-rose-600">
+                                    Lagpas ang nilagay mong bayad sa natitirang
+                                    balance ({formatCurrency(derivedBalance)}).
+                                    Bawasan muna.
+                                  </p>
+                                ) : null}
+                              </div>
+                              <div className="space-y-1">
+                                <label className="text-xs font-medium text-slate-600">
+                                  Method <span className="text-rose-500">*</span>
+                                </label>
+                                <select
+                                  value={formMethod}
+                                  onChange={(e) =>
+                                    setFormMethod(e.target.value as Payment["method"])
+                                  }
+                                  className={CONTROL_CLASS}
+                                >
+                                  <option value="GCASH">GCash</option>
+                                  <option value="MAYA">Maya</option>
+                                  <option value="BANK">Bank transfer</option>
+                                  <option value="COD">COD</option>
+                                  <option value="CASH">Cash</option>
+                                  <option value="OTHER">Other</option>
+                                </select>
+                              </div>
+                            </div>
+                            <div className="grid gap-3 sm:grid-cols-2">
+                              <div className="space-y-1">
+                                <label className="text-xs font-medium text-slate-600">
+                                  Date
+                                </label>
+                                <input
+                                  type="date"
+                                  value={formDate}
+                                  onChange={(e) => setFormDate(e.target.value)}
+                                  className={CONTROL_CLASS}
+                                />
+                              </div>
+                              <div className="space-y-1">
+                                <label className="text-xs font-medium text-slate-600">
+                                  Reference #
+                                </label>
+                                <input
+                                  type="text"
+                                  value={formRef}
+                                  onChange={(e) => setFormRef(e.target.value)}
+                                  className={CONTROL_CLASS}
+                                  placeholder="GCash ref, bank ref, atbp."
+                                />
+                              </div>
+                            </div>
+                            <div className="space-y-1">
+                              <label className="text-xs font-medium text-slate-600">
+                                Notes
+                              </label>
+                              <textarea
+                                value={formNotes}
+                                onChange={(e) => setFormNotes(e.target.value)}
+                                rows={3}
+                                className={cn(CONTROL_CLASS, "min-h-[90px]")}
+                                placeholder="Optional notes (hal. partial payment, sino ang nagbayad, atbp.)"
+                              />
+                            </div>
+                          </div>
+                        )}
+
+                        {formSection === "shipment" && (
+                          <>
+                            <div
+                              ref={shipmentSectionRef}
+                              className="space-y-3 rounded-lg border border-slate-200 bg-white p-3"
+                            >
+                              <div className="text-xs font-medium text-slate-600">
+                                Shipment
+                              </div>
+                              <div className="grid gap-3 sm:grid-cols-2">
+                                <div className="space-y-1">
+                                  <label className="text-xs font-medium text-slate-600">
+                                    Courier <span className="text-rose-500">*</span>
+                                  </label>
+                                  <input
+                                    type="text"
+                                    value={formCourier}
+                                    onChange={(e) => setFormCourier(e.target.value)}
+                                    className={CONTROL_CLASS}
+                                    placeholder="J&T, JRS, LBC, atbp."
+                                  />
+                                </div>
+                                <div className="space-y-1">
+                                  <label className="text-xs font-medium text-slate-600">
+                                    Shipping fee
+                                  </label>
+                                  <input
+                                    type="number"
+                                    min="0"
+                                    step="0.01"
+                                    inputMode="decimal"
+                                    value={formShippingFee}
+                                    onChange={(e) =>
+                                      setFormShippingFee(e.target.value)
+                                    }
+                                    className={CONTROL_CLASS}
+                                    placeholder="0.00"
+                                  />
+                                </div>
+                                <div className="space-y-1">
+                                  <label className="text-xs font-medium text-slate-600">
+                                    Other fees
+                                  </label>
+                                  <input
+                                    type="number"
+                                    min="0"
+                                    step="0.01"
+                                    inputMode="decimal"
+                                    value={formOtherFees}
+                                    onChange={(e) => setFormOtherFees(e.target.value)}
+                                    className={CONTROL_CLASS}
+                                    placeholder="0.00"
+                                  />
+                                </div>
+                                <div className="space-y-1">
+                                  <label className="text-xs font-medium text-slate-600">
+                                    Other fee details
+                                  </label>
+                                  <input
+                                    type="text"
+                                    value={formOtherFeesNote}
+                                    onChange={(e) =>
+                                      setFormOtherFeesNote(e.target.value)
+                                    }
+                                    className={CONTROL_CLASS}
+                                    placeholder="Packaging, tips, atbp."
+                                  />
+                                </div>
+                              </div>
+                              <div className="space-y-1">
+                                <label className="text-xs font-medium text-slate-600">
+                                  Booking date
+                                </label>
+                                <input
+                                  type="date"
+                                  value={formBookingDate}
+                                  onChange={(e) => setFormBookingDate(e.target.value)}
+                                  className={CONTROL_CLASS}
+                                />
+                              </div>
+                              <div className="space-y-1">
+                                <label className="text-xs font-medium text-slate-600">
+                                  Notes
+                                </label>
+                                <textarea
+                                  value={formShipmentNotes}
+                                  onChange={(e) =>
+                                    setFormShipmentNotes(e.target.value)
+                                  }
+                                  rows={2}
+                                  className={cn(CONTROL_CLASS, "min-h-[70px]")}
+                                  placeholder="Mga paalala (special instructions, RTD reason, atbp.)"
+                                />
+                              </div>
+                            </div>
+
+                            {shipment && (
+                              <div className="space-y-3 border-t border-slate-200 pt-3 text-xs">
+                                <div className="text-xs font-medium text-slate-600">
+                                  Quick status
+                                </div>
+                                <div className="flex flex-wrap gap-2">
+                                  <Button
+                                    size="sm"
+                                    variant="secondary"
+                                    disabled={updatingShipmentStatus}
+                                    className="min-w-[140px] border border-slate-200 bg-white text-slate-700 hover:bg-slate-50"
+                                    onClick={() =>
+                                      void handleQuickStatusChange("BOOKED")
+                                    }
+                                  >
+                                    Mark as booked
+                                  </Button>
+                                  <Button
+                                    size="sm"
+                                    variant="secondary"
+                                    disabled={updatingShipmentStatus}
+                                    className="min-w-[140px] border border-slate-200 bg-white text-slate-700 hover:bg-slate-50"
+                                    onClick={() =>
+                                      void handleQuickStatusChange("IN_TRANSIT")
+                                    }
+                                  >
+                                    Mark as in transit
+                                  </Button>
+                                  <Button
+                                    size="sm"
+                                    variant="secondary"
+                                    disabled={updatingShipmentStatus}
+                                    onClick={() =>
+                                      void handleQuickStatusChange("DELIVERED")
+                                    }
+                                    className="min-w-[140px] border border-emerald-500/70 text-emerald-700 hover:bg-emerald-50"
+                                  >
+                                    Mark as delivered
+                                  </Button>
+                                </div>
+                                <p className="text-xs text-slate-600">
+                                  Current status:{" "}
+                                  <span className="font-medium text-slate-900">
+                                    {shipment.status}
+                                  </span>{" "}
+                                  | Huling update:{" "}
+                                  <span className="font-medium text-slate-900">
+                                    {formatDateTime(
+                                      shipment.deliveryDate ?? shipment.shipDate,
+                                    )}
+                                  </span>
+                                </p>
+                              </div>
+                            )}
+                          </>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                  <div className="sticky bottom-0 border-t border-slate-200 bg-white px-6 py-3">
+                    <div className="flex justify-end">
+                      <Button
+                        type="submit"
+                        variant="primary"
+                        size="md"
+                        className="w-full sm:w-auto"
+                        disabled={
+                          !activeOrderId ||
+                          savingPayment ||
+                          savingShipment ||
+                          loadingOrderData
+                        }
+                      >
+                        {savingPayment || savingShipment
+                          ? "Saving..."
+                          : formSection === "payment"
+                            ? "Save payment"
+                            : "Save shipment"}
+                      </Button>
+                    </div>
+                  </div>
+                </form>
+              </div>
+            </div>
+          )}
+
+          <Card data-tour="payments-shipping-payments" className={PANEL_CARD_CLASS}>
+            <CardHeader
+              className={cn(
+                PANEL_HEADER_CLASS,
+                "flex flex-col items-start gap-3 sm:flex-row sm:items-center sm:justify-between"
+              )}
+            >
+              <CardTitle className={PANEL_TITLE_CLASS}>
+                Payments for this order
+              </CardTitle>
+              <div className="flex max-w-full flex-wrap items-center gap-2 pb-1 text-xs text-slate-600">
                 <span className="shrink-0">Method:</span>
                 {(
                   ["ALL", "GCASH", "MAYA", "BANK", "COD", "CASH", "OTHER"] as const
@@ -726,546 +1166,175 @@ export function PaymentsShippingPage() {
                 })}
               </div>
             </CardHeader>
-            <CardContent className="p-0">
-              <div className="px-4 py-4">
-                <div ref={paymentsListRef} className="max-h-64 overflow-y-auto">
-                  {loadingOrderData ? (
-                    <div className="text-sm text-slate-600">
-                      Loading payments...
-                    </div>
-                  ) : !activeOrderId ? (
-                    <div className="text-sm text-slate-600">
-                      Select an order first.
-                    </div>
-                  ) : filteredPayments.length === 0 ? (
-                    <div className="text-sm text-slate-600">
-                      Walang payments pa for this order.
-                    </div>
-                  ) : (
-                    <div className="overflow-x-auto">
-                      <table className="min-w-full text-left text-xs">
-                        <thead className={TABLE_HEAD_CLASS}>
-                          <tr>
-                            <th className="px-3 py-2">Date</th>
-                            <th className="px-3 py-2 text-right">Amount</th>
-                            <th className="px-3 py-2">Method</th>
-                            <th className="px-3 py-2">Ref #</th>
-                            <th className="px-3 py-2">Status</th>
-                            <th className="px-3 py-2 text-right">Actions</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {filteredPayments.map((p) => (
-                            <tr
-                              key={p.id}
-                              className="border-t border-slate-200 hover:bg-slate-50"
-                            >
-                              <td className="px-3 py-2 text-[11px] text-slate-700">
-                                {formatDateTime(p.date)}
-                              </td>
-                              <td className="px-3 py-2 text-right text-[11px] font-semibold tabular-nums text-slate-900">
-                                {formatCurrency(p.amount)}
-                              </td>
-                              <td className="px-3 py-2 text-[11px] text-slate-700">
-                                {p.method}
-                              </td>
-                              <td className="px-3 py-2 text-[11px] text-slate-500">
-                                {p.referenceNumber ?? "-"}
-                              </td>
-                              <td className="px-3 py-2 text-[11px] text-slate-700">
-                                <Badge
-                                  variant={paymentRecordBadgeVariant(p.status)}
-                                  className="text-[10px] uppercase tracking-wide"
-                                >
-                                  {p.status}
-                                </Badge>
-                              </td>
-                              <td className="px-3 py-2 text-right text-[11px]">
-                                <Button
-                                  size="sm"
-                                  variant="danger"
-                                  disabled={p.status === "VOIDED"}
-                                  onClick={() => void handleVoidPayment(p)}
-                                >
-                                  {voidingPaymentId === p.id
-                                    ? "Voiding..."
-                                    : p.status === "VOIDED"
-                                    ? "Voided"
-                                    : "Void"}
-                                </Button>
-                              </td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    </div>
-                  )}
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-
-          <Card data-tour="payments-shipping-add-payment">
-            <CardHeader>
-              <CardTitle>Add payment</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-4 text-sm">
-              <form onSubmit={handleSubmitPayment} className="space-y-4 text-sm">
-                {!activeOrderId ? (
-                  <p className="text-sm text-slate-600">
-                    Piliin muna ang order bago magdagdag ng bayad.
-                  </p>
+            <CardContent className={PANEL_CONTENT_CLASS}>
+              <div ref={paymentsListRef} className="sm:max-h-64 sm:overflow-y-auto">
+                {loadingOrderData ? (
+                  <div className="text-sm text-slate-600">
+                    Loading payments...
+                  </div>
+                ) : !activeOrderId ? (
+                  <div className="text-sm text-slate-600">
+                    Select an order first.
+                  </div>
+                ) : filteredPayments.length === 0 ? (
+                  <div className="text-sm text-slate-600">
+                    Walang payments pa for this order.
+                  </div>
                 ) : (
-                  <div className="grid gap-3 sm:grid-cols-2">
-                    <div className="space-y-1">
-                      <label className="text-xs font-medium text-slate-600">
-                        Amount <span className="text-rose-500">*</span>
-                      </label>
-                      <input
-                        type="number"
-                        min="0"
-                        step="0.01"
-                        inputMode="decimal"
-                        value={formAmount}
-                        onChange={(e) => setFormAmount(e.target.value)}
-                        className={CONTROL_CLASS}
-                        placeholder="0.00"
-                      />
-                      {orderDetail && (
-                        <p className="text-xs text-slate-600">
-                          Natitirang balance:{" "}
-                          <span className="font-semibold text-amber-700">
-                            {formatCurrency(derivedBalance)}
-                          </span>
-                        </p>
-                      )}
-                      {orderDetail && derivedBalance <= 0 ? (
-                        <p className="text-xs text-rose-600">
-                          Wala nang natitirang balance para sa order na ito.
-                        </p>
-                      ) : amountGreaterThanBalance ? (
-                        <p className="text-xs text-rose-600">
-                          Lagpas ang nilagay mong bayad sa natitirang balance (
-                          {formatCurrency(derivedBalance)}). Bawasan muna.
-                        </p>
-                      ) : null}
-                    </div>
-
-                    <div className="space-y-1">
-                      <label className="text-xs font-medium text-slate-600">
-                        Method <span className="text-rose-500">*</span>
-                      </label>
-                      <select
-                        value={formMethod}
-                        onChange={(e) =>
-                          setFormMethod(e.target.value as Payment["method"])
-                        }
-                        className={CONTROL_CLASS}
-                      >
-                        <option value="GCASH">GCash</option>
-                        <option value="MAYA">Maya</option>
-                        <option value="BANK">Bank transfer</option>
-                        <option value="COD">COD</option>
-                        <option value="CASH">Cash</option>
-                        <option value="OTHER">Other</option>
-                      </select>
-                    </div>
-
-                    <div className="space-y-1">
-                      <label className="text-xs font-medium text-slate-600">
-                        Date
-                      </label>
-                      <input
-                        type="date"
-                        value={formDate}
-                        onChange={(e) => setFormDate(e.target.value)}
-                        className={CONTROL_CLASS}
-                      />
-                    </div>
-
-                    <div className="space-y-1">
-                      <label className="text-xs font-medium text-slate-600">
-                        Reference #
-                      </label>
-                        <input
-                          type="text"
-                          value={formRef}
-                          onChange={(e) => setFormRef(e.target.value)}
-                          className={CONTROL_CLASS}
-                          placeholder="GCash ref, bank ref, atbp."
-                        />
-                    </div>
-
-                    <div className="space-y-1 sm:col-span-2">
-                      <label className="text-xs font-medium text-slate-600">
-                        Notes
-                      </label>
-                        <textarea
-                          value={formNotes}
-                          onChange={(e) => setFormNotes(e.target.value)}
-                          rows={3}
-                          className={cn(CONTROL_CLASS, "min-h-[90px]")}
-                          placeholder="Optional notes (hal. partial payment, sino ang nagbayad, atbp.)"
-                        />
-                    </div>
-
-                    <div className="flex justify-end sm:col-span-2">
-                      <Button
-                        type="submit"
-                        variant="primary"
-                        size="md"
-                        disabled={disableSavePayment}
-                        className="w-full sm:w-auto"
-                      >
-                        {savingPayment ? "Saving payment..." : "Save payment"}
-                      </Button>
-                    </div>
+                  <div className="overflow-x-auto">
+                    <table className="min-w-full text-left text-xs">
+                      <thead className={TABLE_HEAD_CLASS}>
+                        <tr>
+                          <th className="px-3 py-2">Date</th>
+                          <th className="px-3 py-2 text-right">Amount</th>
+                          <th className="px-3 py-2">Method</th>
+                          <th className="px-3 py-2">Ref #</th>
+                          <th className="px-3 py-2">Status</th>
+                          <th className="px-3 py-2 text-right">Actions</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {filteredPayments.map((p) => (
+                          <tr
+                            key={p.id}
+                            className="border-t border-slate-200 hover:bg-slate-50"
+                          >
+                            <td className="px-3 py-2 text-[11px] text-slate-700">
+                              {formatDateTime(p.date)}
+                            </td>
+                            <td className="px-3 py-2 text-right text-[11px] font-semibold tabular-nums text-slate-900">
+                              {formatCurrency(p.amount)}
+                            </td>
+                            <td className="px-3 py-2 text-[11px] text-slate-700">
+                              {p.method}
+                            </td>
+                            <td className="px-3 py-2 text-[11px] text-slate-500">
+                              {p.referenceNumber ?? "-"}
+                            </td>
+                            <td className="px-3 py-2 text-[11px] text-slate-700">
+                              <Badge
+                                variant={paymentRecordBadgeVariant(p.status)}
+                                className="text-[10px] uppercase tracking-wide"
+                              >
+                                {p.status}
+                              </Badge>
+                            </td>
+                            <td className="px-3 py-2 text-right text-[11px]">
+                              <Button
+                                size="sm"
+                                variant="danger"
+                                disabled={p.status === "VOIDED"}
+                                onClick={() => void handleVoidPayment(p)}
+                              >
+                                {voidingPaymentId === p.id
+                                  ? "Voiding..."
+                                  : p.status === "VOIDED"
+                                  ? "Voided"
+                                  : "Void"}
+                              </Button>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
                   </div>
                 )}
-              </form>
-            </CardContent>
-          </Card>
-        </div>
-        <div className="space-y-6 lg:col-span-6">
-          <Card data-tour="payments-shipping-shipment">
-            <CardHeader>
-              <CardTitle>Shipment details</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <form onSubmit={handleSaveShipment} className="space-y-4 text-sm">
-                {!activeOrderId ? (
-                  <p className="text-sm text-slate-600">
-                    Piliin ang order mula sa queue para gumawa o i-edit ang shipment.
-                  </p>
-                ) : loadingOrderData ? (
-                  <p className="text-sm text-slate-600">
-                    Naglo-load pa ng shipment info...
-                  </p>
-                ) : (
-                  <>
-                    {orderDetail && (
-                      <div className="grid gap-3 sm:grid-cols-2 text-xs">
-                        <div className="rounded-lg bg-slate-50 px-3 py-2">
-                          <div className="text-xs font-medium text-slate-600">
-                            Grand total
-                          </div>
-                          <div className="mt-1 font-semibold tabular-nums text-emerald-700">
-                            {formatCurrency(orderDetail.order.grandTotal)}
-                          </div>
-                        </div>
-                        <div className="rounded-lg bg-slate-50 px-3 py-2">
-                          <div className="text-xs font-medium text-slate-600">
-                            Balance
-                          </div>
-                          <div className="mt-1 font-semibold tabular-nums text-amber-700">
-                            {formatCurrency(derivedBalance)}
-                          </div>
-                        </div>
-                        <div className="rounded-lg bg-slate-50 px-3 py-2">
-                          <div className="text-xs font-medium text-slate-600">
-                            Payment status
-                          </div>
-                          <div className="mt-1">
-                            <Badge
-                              variant={orderPaymentBadgeVariant(derivedPaymentStatus)}
-                              className="text-[10px] uppercase tracking-wide"
-                            >
-                              {derivedPaymentStatus}
-                            </Badge>
-                          </div>
-                        </div>
-                        <div className="rounded-lg bg-slate-50 px-3 py-2">
-                          <div className="text-xs font-medium text-slate-600">
-                            Order status
-                          </div>
-                          <div className="mt-1">
-                            <Badge
-                              variant={orderStatusBadgeVariant(
-                                orderDetail.order.status,
-                              )}
-                              className="text-[10px] uppercase tracking-wide"
-                            >
-                              {orderDetail.order.status}
-                            </Badge>
-                          </div>
-                        </div>
-                      </div>
-                    )}
-
-                    <div className="grid gap-3 sm:grid-cols-2">
-                      <div className="space-y-1">
-                        <label className="text-xs font-medium text-slate-600">
-                          Courier <span className="text-rose-500">*</span>
-                        </label>
-                        <input
-                          type="text"
-                          value={formCourier}
-                          onChange={(e) => setFormCourier(e.target.value)}
-                          className={CONTROL_CLASS}
-                          placeholder="J&T, JRS, LBC, atbp."
-                        />
-                      </div>
-
-                      <div className="space-y-1">
-                        <label className="text-xs font-medium text-slate-600">
-                          Tracking number
-                        </label>
-                        <input
-                          type="text"
-                          value={formTracking}
-                          onChange={(e) => setFormTracking(e.target.value)}
-                          className={CONTROL_CLASS}
-                          placeholder="Tracking number mula sa courier"
-                        />
-                      </div>
-
-                      <div className="space-y-1">
-                        <label className="text-xs font-medium text-slate-600">
-                          Shipping fee
-                        </label>
-                        <input
-                          type="number"
-                          min="0"
-                          step="0.01"
-                          inputMode="decimal"
-                          value={formShippingFee}
-                          onChange={(e) => setFormShippingFee(e.target.value)}
-                          className={CONTROL_CLASS}
-                          placeholder="0.00"
-                        />
-                      </div>
-
-                      <div className="space-y-1">
-                        <label className="text-xs font-medium text-slate-600">
-                          Status
-                        </label>
-                        <select
-                          value={formStatus}
-                          onChange={(e) =>
-                            setFormStatus(e.target.value as Shipment["status"])
-                          }
-                          className={CONTROL_CLASS}
-                        >
-                          <option value="PENDING">Pending</option>
-                          <option value="BOOKED">Booked / To pick up</option>
-                          <option value="IN_TRANSIT">In transit</option>
-                          <option value="DELIVERED">Delivered</option>
-                          <option value="RETURNED">Returned</option>
-                          <option value="LOST">Lost</option>
-                        </select>
-                      </div>
-                    </div>
-
-                    <div className="grid gap-3 sm:grid-cols-3">
-                      <div className="space-y-1">
-                        <label className="text-xs font-medium text-slate-600">
-                          Booking date
-                        </label>
-                        <input
-                          type="date"
-                          value={formBookingDate}
-                          onChange={(e) => setFormBookingDate(e.target.value)}
-                          className={CONTROL_CLASS}
-                        />
-                      </div>
-                      <div className="space-y-1">
-                        <label className="text-xs font-medium text-slate-600">
-                          Ship date
-                        </label>
-                        <input
-                          type="date"
-                          value={formShipDate}
-                          onChange={(e) => setFormShipDate(e.target.value)}
-                          className={CONTROL_CLASS}
-                        />
-                      </div>
-                      <div className="space-y-1">
-                        <label className="text-xs font-medium text-slate-600">
-                          Delivery date
-                        </label>
-                        <input
-                          type="date"
-                          value={formDeliveryDate}
-                          onChange={(e) => setFormDeliveryDate(e.target.value)}
-                          className={CONTROL_CLASS}
-                        />
-                      </div>
-                    </div>
-
-                    <div className="space-y-1">
-                      <label className="text-xs font-medium text-slate-600">
-                        Notes
-                      </label>
-                      <textarea
-                        value={formShipmentNotes}
-                        onChange={(e) => setFormShipmentNotes(e.target.value)}
-                        rows={3}
-                        className={cn(CONTROL_CLASS, "min-h-[90px]")}
-                        placeholder="Optional notes (hal. rider, special instructions, RTD reason, atbp.)"
-                      />
-                    </div>
-
-                    <div className="flex justify-end">
-                      <Button
-                        type="submit"
-                        variant="primary"
-                        size="md"
-                        disabled={savingShipment}
-                        className="w-full sm:w-auto"
-                      >
-                    {savingShipment ? "Saving shipment..." : "Save shipment"}
-                  </Button>
-                </div>
-
-                {shipment && (
-                  <div className="space-y-3 border-t border-slate-200 pt-3 text-xs">
-                    <div className="text-xs font-medium text-slate-600">
-                      Quick status
-                    </div>
-                    <div className="flex flex-wrap gap-2">
-                      <Button
-                        size="sm"
-                        variant="secondary"
-                        disabled={updatingShipmentStatus}
-                        className="min-w-[140px] border border-slate-200 bg-white text-slate-700 hover:bg-slate-50"
-                        onClick={() => void handleQuickStatusChange("BOOKED")}
-                      >
-                        Mark as booked
-                      </Button>
-                      <Button
-                        size="sm"
-                        variant="secondary"
-                        disabled={updatingShipmentStatus}
-                        className="min-w-[140px] border border-slate-200 bg-white text-slate-700 hover:bg-slate-50"
-                        onClick={() =>
-                          void handleQuickStatusChange("IN_TRANSIT")
-                        }
-                      >
-                        Mark as in transit
-                      </Button>
-                      <Button
-                        size="sm"
-                        variant="secondary"
-                        disabled={updatingShipmentStatus}
-                        onClick={() =>
-                          void handleQuickStatusChange("DELIVERED")
-                        }
-                        className="min-w-[140px] border border-emerald-500/70 text-emerald-700 hover:bg-emerald-50"
-                      >
-                        Mark as delivered
-                      </Button>
-                    </div>
-                    <p className="text-xs text-slate-600">
-                          Current status:{" "}
-                          <span className="font-medium text-slate-900">
-                            {shipment.status}
-                          </span>{" "}
-                          | Huling update:{" "}
-                          <span className="font-medium text-slate-900">
-                            {formatDateTime(
-                              shipment.deliveryDate ?? shipment.shipDate,
-                            )}
-                          </span>
-                        </p>
-                      </div>
-                    )}
-                  </>
-                )}
-              </form>
-            </CardContent>
-          </Card>
-
-          <Card data-tour="payments-shipping-queue">
-            <CardHeader>
-              <CardTitle>Shipping queue for this session</CardTitle>
-            </CardHeader>
-            <CardContent className="p-0">
-              <div className="px-4 py-4">
-                <div ref={queueListRef} className="max-h-[420px] overflow-y-auto">
-                  {loadingOrders ? (
-                    <div className="text-sm text-slate-600">
-                      Loading orders...
-                    </div>
-                  ) : queueOrders.length === 0 ? (
-                    <div className="text-sm text-slate-600">
-                      Walang orders pa for this session (or all are cancelled /
-                      returned).
-                    </div>
-                  ) : (
-                    <div className="overflow-x-auto">
-                      <table className="min-w-full text-left text-xs">
-                        <thead className={TABLE_HEAD_CLASS}>
-                          <tr>
-                            <th className="px-3 py-2">Order #</th>
-                            <th className="px-3 py-2">Customer</th>
-                            <th className="px-3 py-2 text-right">Grand total</th>
-                            <th className="px-3 py-2 text-right">Paid</th>
-                            <th className="px-3 py-2">Payment</th>
-                            <th className="px-3 py-2">Status</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {queueOrders.map((o) => {
-                            const isActive = o.id === activeOrderId;
-                            return (
-                              <tr
-                                key={o.id}
-                                className={cn(
-                                  "border-t border-slate-200 hover:bg-slate-50",
-                                  isActive && "bg-emerald-50",
-                                )}
-                                onClick={() => setActiveOrderId(o.id)}
-                              >
-                                <td
-                                  className={cn(
-                                    "cursor-pointer px-3 py-2 text-[11px] font-semibold text-emerald-700",
-                                    isActive && "border-l-4 border-emerald-500",
-                                  )}
-                                >
-                                  {o.orderNumber}
-                                </td>
-                                <td className="cursor-pointer px-3 py-2 text-[11px] text-slate-900">
-                                  {formatCustomerLabel(
-                                    o.customerId,
-                                    customerMap[o.customerId ?? ""]?.displayName,
-                                    customerMap[o.customerId ?? ""]?.realName,
-                                  )}
-                                </td>
-                                <td className="cursor-pointer px-3 py-2 text-right text-[11px] font-semibold tabular-nums text-slate-900">
-                                  {formatCurrency(o.grandTotal)}
-                                </td>
-                                <td className="cursor-pointer px-3 py-2 text-right text-[11px] font-semibold tabular-nums text-slate-900">
-                                  {formatCurrency(o.amountPaid)}
-                                </td>
-                                <td className="cursor-pointer px-3 py-2 text-[11px] text-slate-900">
-                                  <Badge
-                                    variant={orderPaymentBadgeVariant(
-                                      o.paymentStatus,
-                                    )}
-                                    className="text-[10px] uppercase tracking-wide"
-                                  >
-                                    {o.paymentStatus}
-                                  </Badge>
-                                </td>
-                                <td className="cursor-pointer px-3 py-2 text-[11px] text-slate-900">
-                                  <Badge
-                                    variant={orderStatusBadgeVariant(o.status)}
-                                    className="text-[10px] uppercase tracking-wide"
-                                  >
-                                    {o.status}
-                                  </Badge>
-                                </td>
-                              </tr>
-                            );
-                          })}
-                        </tbody>
-                      </table>
-                    </div>
-                  )}
-                </div>
               </div>
             </CardContent>
           </Card>
+
+          <Card data-tour="payments-shipping-queue" className={PANEL_CARD_CLASS}>
+            <CardHeader className={PANEL_HEADER_CLASS}>
+              <CardTitle className={PANEL_TITLE_CLASS}>
+                Shipping queue for this session
+              </CardTitle>
+            </CardHeader>
+            <CardContent className={PANEL_CONTENT_CLASS}>
+              <div ref={queueListRef} className="sm:max-h-[420px] sm:overflow-y-auto">
+                {loadingOrders ? (
+                  <div className="text-sm text-slate-600">
+                    Loading orders...
+                  </div>
+                ) : queueOrders.length === 0 ? (
+                  <div className="text-sm text-slate-600">
+                    Walang orders pa for this session (or all are cancelled /
+                    returned).
+                  </div>
+                ) : (
+                  <div className="overflow-x-auto">
+                    <table className="min-w-full text-left text-xs">
+                      <thead className={TABLE_HEAD_CLASS}>
+                        <tr>
+                          <th className="px-3 py-2">Order #</th>
+                          <th className="px-3 py-2">Customer</th>
+                          <th className="px-3 py-2 text-right">Grand total</th>
+                          <th className="px-3 py-2 text-right">Paid</th>
+                          <th className="px-3 py-2">Payment</th>
+                          <th className="px-3 py-2">Status</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {queueOrders.map((o) => {
+                          const isActive = o.id === activeOrderId;
+                          return (
+                            <tr
+                              key={o.id}
+                              className={cn(
+                                "border-t border-slate-200 hover:bg-slate-50",
+                                isActive && "bg-emerald-50",
+                              )}
+                              onClick={() => setActiveOrderId(o.id)}
+                            >
+                              <td
+                                className={cn(
+                                  "cursor-pointer px-3 py-2 text-[11px] font-semibold text-emerald-700",
+                                  isActive && "border-l-4 border-emerald-500",
+                                )}
+                              >
+                                {o.orderNumber}
+                              </td>
+                              <td className="cursor-pointer px-3 py-2 text-[11px] text-slate-900">
+                                {formatCustomerLabel(
+                                  o.customerId,
+                                  customerMap[o.customerId ?? ""]?.displayName,
+                                  customerMap[o.customerId ?? ""]?.realName,
+                                )}
+                              </td>
+                              <td className="cursor-pointer px-3 py-2 text-right text-[11px] font-semibold tabular-nums text-slate-900">
+                                {formatCurrency(o.grandTotal)}
+                              </td>
+                              <td className="cursor-pointer px-3 py-2 text-right text-[11px] font-semibold tabular-nums text-slate-900">
+                                {formatCurrency(o.amountPaid)}
+                              </td>
+                              <td className="cursor-pointer px-3 py-2 text-[11px] text-slate-900">
+                                <Badge
+                                  variant={orderPaymentBadgeVariant(
+                                    o.paymentStatus,
+                                  )}
+                                  className="text-[10px] uppercase tracking-wide"
+                                >
+                                  {o.paymentStatus}
+                                </Badge>
+                              </td>
+                              <td className="cursor-pointer px-3 py-2 text-[11px] text-slate-900">
+                                <Badge
+                                  variant={orderStatusBadgeVariant(o.status)}
+                                  className="text-[10px] uppercase tracking-wide"
+                                >
+                                  {o.status}
+                                </Badge>
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </div>
+            </CardContent>
+          </Card>
+
         </div>
       </div>
     </div>
@@ -1297,3 +1366,4 @@ export function PaymentsShippingPage() {
     </Page>
   );
 }
+

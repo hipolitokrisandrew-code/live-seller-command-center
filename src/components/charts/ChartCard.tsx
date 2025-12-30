@@ -23,8 +23,8 @@ export function ChartCard({
   children,
   ...props
 }: ChartCardProps) {
-  const headerPadding = compact ? "px-3 py-2" : "px-4 py-3";
-  const bodyPaddingClass = compact ? "px-3 py-3" : "px-4 py-4";
+  const headerPadding = compact ? "px-3 py-1.5" : "px-4 py-2";
+  const bodyPaddingClass = compact ? "px-3 py-2" : "px-4 py-3";
   const titleClass = compact
     ? "text-[10px] font-semibold uppercase tracking-[0.3em] text-slate-400"
     : "text-[11px] font-semibold uppercase tracking-[0.3em] text-slate-400";
@@ -78,15 +78,48 @@ export function ChartContainer({
   children,
   ...props
 }: ChartContainerProps) {
+  const containerRef = React.useRef<HTMLDivElement | null>(null);
+  const [size, setSize] = React.useState({ width: 0, height: 0 });
+
+  React.useEffect(() => {
+    const node = containerRef.current;
+    if (!node) return;
+
+    const updateSize = () => {
+      const rect = node.getBoundingClientRect();
+      setSize({
+        width: Math.max(rect.width, 1),
+        height: Math.max(rect.height, 1),
+      });
+    };
+
+    updateSize();
+    const observer = new ResizeObserver(() => {
+      updateSize();
+    });
+    observer.observe(node);
+
+    return () => {
+      observer.disconnect();
+    };
+  }, []);
+
+  const ready = size.width > 0 && size.height > 0;
+
   return (
     <div
+      ref={containerRef}
       className={cn("w-full min-h-0", className)}
-      style={{ height }}
+      style={{ height, minHeight: height }}
       {...props}
     >
-      <ResponsiveContainer width="100%" height="100%">
-        {children}
-      </ResponsiveContainer>
+      {ready ? (
+        <ResponsiveContainer width={size.width} height={size.height}>
+          {children}
+        </ResponsiveContainer>
+      ) : (
+        <div className="h-full w-full" />
+      )}
     </div>
   );
 }
@@ -125,9 +158,9 @@ export function ChartTooltip({
         </div>
       ) : null}
       <div className="mt-2 space-y-1">
-        {payload.map((entry) => (
+        {payload.map((entry, index) => (
           <div
-            key={entry.dataKey ?? entry.name}
+            key={`${entry.dataKey ?? entry.name}-${index}`}
             className="flex items-center justify-between gap-2 font-semibold text-slate-900"
           >
             <span className="flex items-center gap-2 text-[11px] text-slate-600">

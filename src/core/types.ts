@@ -99,6 +99,7 @@ export interface Order {
   shippingFee: number;
   codFee: number;
   otherFees: number;
+  otherFeesNote?: string;
   grandTotal: number;
   amountPaid: number;
   balanceDue: number;

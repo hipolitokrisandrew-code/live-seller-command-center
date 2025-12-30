@@ -222,27 +222,31 @@ export function DashboardPage() {
           </Card>
         ) : null}
 
-        <PeriodPlatformFilterCard
-          preset={preset}
-          onPresetChange={handlePresetChange}
-          dateFrom={dateFrom}
-          onDateFromChange={(value) => {
-            setDateFrom(value);
-            setPreset("CUSTOM");
-          }}
-          dateTo={dateTo}
-          onDateToChange={(value) => {
-            setDateTo(value);
-            setPreset("CUSTOM");
-          }}
-          platform={platform}
-          onPlatformChange={(value) => setPlatform(value)}
-          periodLabel={periodLabel}
-          showPeriodLabel
-          helperText={PH_COPY.dashboard.filterHelper}
-          onApply={applyDateRange}
-          dataTour="dashboard-range"
-        />
+        <div className="sticky top-6 z-30">
+          <div className="rounded-2xl bg-slate-50/90 px-0 py-3 shadow-sm shadow-slate-900/5 backdrop-blur-sm ring-1 ring-slate-200/60">
+            <PeriodPlatformFilterCard
+              preset={preset}
+              onPresetChange={handlePresetChange}
+              dateFrom={dateFrom}
+              onDateFromChange={(value) => {
+                setDateFrom(value);
+                setPreset("CUSTOM");
+              }}
+              dateTo={dateTo}
+              onDateToChange={(value) => {
+                setDateTo(value);
+                setPreset("CUSTOM");
+              }}
+              platform={platform}
+              onPlatformChange={(value) => setPlatform(value)}
+              periodLabel={periodLabel}
+              showPeriodLabel
+              helperText={PH_COPY.dashboard.filterHelper}
+              onApply={applyDateRange}
+              dataTour="dashboard-range"
+            />
+          </div>
+        </div>
 
         {summary ? (
         <div

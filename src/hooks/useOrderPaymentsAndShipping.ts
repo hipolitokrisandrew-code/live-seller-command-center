@@ -51,9 +51,15 @@ export interface UseOrderPaymentsAndShipping {
   setInfoMessage: (msg: string | null) => void;
   refreshOrdersForSession: (sessionId: string) => Promise<void>;
   refreshOrderData: (orderId: string) => Promise<void>;
-  addPayment: (payload: Omit<RecordPaymentInput, "orderId">) => Promise<void>;
+  addPayment: (
+    payload: Omit<RecordPaymentInput, "orderId">,
+    options?: { suppressInfo?: boolean }
+  ) => Promise<void>;
   voidExistingPayment: (paymentId: string) => Promise<void>;
-  saveShipmentDetails: (payload: UpsertShipmentPayload) => Promise<void>;
+  saveShipmentDetails: (
+    payload: UpsertShipmentPayload,
+    options?: { suppressInfo?: boolean }
+  ) => Promise<void>;
   quickUpdateShipmentStatus: (status: Shipment["status"]) => Promise<void>;
 }
 
@@ -198,7 +204,10 @@ export function useOrderPaymentsAndShipping(): UseOrderPaymentsAndShipping {
   }, [activeOrderId, refreshOrderData]);
 
   const addPayment = useCallback(
-    async (payload: Omit<RecordPaymentInput, "orderId">) => {
+    async (
+      payload: Omit<RecordPaymentInput, "orderId">,
+      options?: { suppressInfo?: boolean }
+    ) => {
       if (!activeOrderId) {
         setError("Please select an order first.");
         return;
@@ -211,7 +220,9 @@ export function useOrderPaymentsAndShipping(): UseOrderPaymentsAndShipping {
 
         await recordPayment({ orderId: activeOrderId, ...payload });
 
-        setInfoMessage("Payment recorded successfully.");
+        if (!options?.suppressInfo) {
+          setInfoMessage("Payment recorded successfully.");
+        }
         await refreshOrderData(activeOrderId);
         if (activeSessionId) {
           await refreshOrdersForSession(activeSessionId);
@@ -266,7 +277,10 @@ export function useOrderPaymentsAndShipping(): UseOrderPaymentsAndShipping {
   );
 
   const saveShipmentDetails = useCallback(
-    async (payload: UpsertShipmentPayload) => {
+    async (
+      payload: UpsertShipmentPayload,
+      options?: { suppressInfo?: boolean }
+    ) => {
       if (!activeOrderId) {
         setError("Please select an order first.");
         return;
@@ -289,7 +303,9 @@ export function useOrderPaymentsAndShipping(): UseOrderPaymentsAndShipping {
           await refreshOrdersForSession(activeSessionId);
         }
 
-        setInfoMessage("Shipment saved and order totals updated.");
+        if (!options?.suppressInfo) {
+          setInfoMessage("Shipment saved and order totals updated.");
+        }
       } catch (e) {
         console.error(e);
         setError("Failed to save shipment.");

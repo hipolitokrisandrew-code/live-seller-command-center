@@ -1,7 +1,7 @@
 import * as React from "react";
 
 type ButtonVariant = "primary" | "secondary" | "danger" | "dangerSolid";
-type ButtonSize = "md" | "sm";
+type ButtonSize = "md" | "sm" | "cta";
 
 type ButtonProps = React.ButtonHTMLAttributes<HTMLButtonElement> & {
   variant?: ButtonVariant;
@@ -28,6 +28,7 @@ const VARIANT_CLASS: Record<ButtonVariant, string> = {
 const SIZE_CLASS: Record<ButtonSize, string> = {
   md: "h-9 px-3 text-sm",
   sm: "h-8 px-2.5 text-xs",
+  cta: "h-auto px-4 py-2 text-sm font-medium shadow-sm",
 };
 
 export const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
@@ -42,3 +43,4 @@ export const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
 );
 
 Button.displayName = "Button";
+

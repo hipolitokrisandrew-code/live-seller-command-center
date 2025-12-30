@@ -567,7 +567,7 @@ export function LiveSessionsPage() {
 
       {/* Slide-over form */}
       {isFormOpen && (
-        <div className="fixed inset-0 z-20 flex items-center justify-center bg-black/40 px-4">
+        <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/40 px-4">
           <div
             className="flex h-[90vh] w-full max-w-3xl flex-col rounded-lg border border-slate-200 bg-white p-6 shadow-2xl"
             data-tour="live-sessions-form"

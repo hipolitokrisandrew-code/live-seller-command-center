@@ -12,13 +12,13 @@ function generateId(prefix: string) {
 
 export interface UpsertShipmentPayload {
   courier: string;
-  trackingNumber: string;
   shippingFee: number;
-  status: Shipment["status"];
   bookingDate?: string;
+  notes?: string;
+  trackingNumber?: string;
+  status?: Shipment["status"];
   shipDate?: string;
   deliveryDate?: string;
-  notes?: string;
 }
 
 /**
@@ -60,13 +60,16 @@ export async function createOrUpdateShipment(
     id: existing?.id ?? generateId("ship"),
     orderId,
     courier: payload.courier.trim(),
-    trackingNumber: payload.trackingNumber.trim(),
+    trackingNumber:
+      payload.trackingNumber?.trim() ??
+      existing?.trackingNumber ??
+      "",
     shippingFee,
-    bookingDate: payload.bookingDate,
-    shipDate: payload.shipDate,
-    deliveryDate: payload.deliveryDate,
-    status: payload.status,
-    notes: payload.notes,
+    bookingDate: payload.bookingDate ?? existing?.bookingDate,
+    shipDate: payload.shipDate ?? existing?.shipDate,
+    deliveryDate: payload.deliveryDate ?? existing?.deliveryDate,
+    status: payload.status ?? existing?.status ?? "PENDING",
+    notes: payload.notes ?? existing?.notes,
   };
 
   if (existing) {

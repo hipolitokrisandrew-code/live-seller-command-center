@@ -104,10 +104,6 @@ function cn(...classes: Array<string | false | null | undefined>) {
   return classes.filter(Boolean).join(" ");
 }
 
-function clamp(n: number, min: number, max: number) {
-  return Math.min(max, Math.max(min, n));
-}
-
 function safeText(value: unknown) {
   const s =
     typeof value === "string" ? value.trim() : String(value ?? "").trim();
@@ -141,6 +137,13 @@ const COLOR_PALETTE = {
   },
 } as const;
 
+const DONUT_DETAILS = {
+  "Cost of Goods": "Inventory and supplier payouts.",
+  Shipping: "Courier fees and delivery costs.",
+  Other: "Packaging, tools, misc.",
+  "Net Profit": "Earnings after all costs.",
+} as const;
+
 export function FinancePage() {
   const [preset, setPreset] = useState<RangePreset>("THIS_MONTH");
   const [fromInput, setFromInput] = useState(formatDateInput(startOfMonth()));
@@ -158,6 +161,7 @@ export function FinancePage() {
   const tutorial = useFinanceTutorial();
 
   const isCompact = useMediaQuery("(max-width: 640px)");
+  const isNarrow = useMediaQuery("(max-width: 1024px)");
   const periodLabel = useMemo(() => rangeLabel(preset), [preset]);
 
   const computeRange = useCallback((): { from: string; to: string } => {
@@ -286,9 +290,11 @@ export function FinancePage() {
     const chart = (
       <ChartContainer height={height}>{content}</ChartContainer>
     );
-    if (!shouldScroll) return chart;
     return (
-      <div className="overflow-y-auto" style={{ maxHeight: viewportHeight }}>
+      <div
+        className={shouldScroll ? "overflow-visible" : undefined}
+        style={{ minHeight: viewportHeight }}
+      >
         {chart}
       </div>
     );
@@ -322,31 +328,127 @@ export function FinancePage() {
         label: "Cost of Goods",
         value: snapshot.totalCostOfGoods,
         color: COLOR_PALETTE.donut.goods,
+        description: DONUT_DETAILS["Cost of Goods"],
       },
       {
         label: "Shipping",
         value: snapshot.totalShippingCost,
         color: COLOR_PALETTE.donut.shipping,
+        description: DONUT_DETAILS.Shipping,
       },
       {
         label: "Other",
         value: snapshot.totalOtherExpenses,
         color: COLOR_PALETTE.donut.other,
+        description: DONUT_DETAILS.Other,
       },
       {
         label: "Net Profit",
         value: Math.max(snapshot.netProfit, 0),
         color: COLOR_PALETTE.donut.profit,
+        description: DONUT_DETAILS["Net Profit"],
       },
     ];
 
-    return segments.map((segment) => ({
-      ...segment,
-      percent: (segment.value / total) * 100,
-    }));
+    return segments
+      .map((segment) => ({
+        ...segment,
+        percent: (segment.value / total) * 100,
+      }))
+      .filter((segment) => segment.value > 0);
   }, [snapshot]);
 
   const donutHasData = donutSegments.some((segment) => segment.percent > 0);
+
+  type DonutLabelPayload = {
+    label?: string;
+    percent?: number;
+    color?: string;
+    description?: string;
+  };
+
+  type DonutLabelProps = {
+    cx?: number;
+    cy?: number;
+    midAngle?: number;
+    outerRadius?: number;
+    percent?: number;
+    payload?: DonutLabelPayload;
+  };
+
+  const renderDonutCallout = (props: DonutLabelProps) => {
+    const { cx = 0, cy = 0, midAngle = 0, outerRadius = 0, payload } = props;
+    if (!payload) return null;
+
+    const radians = (-midAngle * Math.PI) / 180;
+    const lineOffset = isCompact ? 6 : 16;
+    const horizontal = isCompact ? 16 : 48;
+    const startX = cx + (outerRadius + 6) * Math.cos(radians);
+    const startY = cy + (outerRadius + 6) * Math.sin(radians);
+    const midX = cx + (outerRadius + lineOffset) * Math.cos(radians);
+    const midY = cy + (outerRadius + lineOffset) * Math.sin(radians);
+    const isRight = Math.cos(radians) >= 0;
+    const endX = midX + (isRight ? horizontal : -horizontal);
+    const endY = midY;
+    const labelOffset = isCompact ? 4 : 6;
+    const labelX = endX + (isRight ? labelOffset : -labelOffset);
+    const textAnchor = isRight ? "start" : "end";
+    const label = safeText(payload.label);
+    const labelLines = formatCompactLabel(
+      label,
+      isCompact ? 9 : 12,
+      2
+    ).split("\n");
+    const percentValue =
+      payload.percent ?? (props.percent ? props.percent * 100 : 0);
+    const percentText = formatPercent(percentValue);
+    const showDescription = !isCompact && outerRadius >= 90;
+    const description =
+      showDescription && payload.description ? payload.description : "";
+
+    return (
+      <g>
+        <path
+          d={`M${startX},${startY}L${midX},${midY}L${endX},${endY}`}
+          stroke="#94a3b8"
+          strokeWidth={1}
+          fill="none"
+        />
+        <text x={labelX} y={endY - 6} textAnchor={textAnchor}>
+          <tspan
+            fill={payload.color ?? "#0f172a"}
+            fontSize={isCompact ? 10 : 14}
+            fontWeight={700}
+          >
+            {percentText}
+          </tspan>
+          {labelLines.map((line, index) => (
+            <tspan
+              key={`${label}-${index}`}
+              x={labelX}
+              dy={isCompact ? 12 : 14}
+              fill="#64748b"
+              fontSize={isCompact ? 9 : 11}
+              fontWeight={600}
+            >
+              {line}
+            </tspan>
+          ))}
+          {description ? (
+            <tspan
+              x={labelX}
+              dy={isCompact ? 12 : 14}
+              fill="#94a3b8"
+              fontSize={isCompact ? 9 : 10}
+              fontWeight={500}
+            >
+              {description}
+            </tspan>
+          ) : null}
+        </text>
+      </g>
+    );
+  };
 
   const heroStats = useMemo(() => {
     if (!snapshot) return [];
@@ -457,10 +559,8 @@ export function FinancePage() {
   }, [profitMetric, profitSortedProducts]);
 
   const baseProfitChartHeight = isCompact ? 220 : 260;
-  const profitChartHeight = Math.min(
-    baseProfitChartHeight + profitMetricChartData.length * 32,
-    1600
-  );
+  const profitChartHeight =
+    baseProfitChartHeight + profitMetricChartData.length * 32;
   const profitChartViewportHeight = Math.min(
     profitChartHeight,
     isCompact ? 360 : 520
@@ -543,7 +643,7 @@ export function FinancePage() {
     const rowH = isCompact ? 34 : 32;
     const minChart = isCompact ? 240 : 260;
     const rawHeight = rows * rowH + 72;
-    return Math.min(Math.max(rawHeight, minChart), 1600);
+    return Math.max(rawHeight, minChart);
   }, [heroBarTrend.length, isCompact]);
 
   const topItemsViewportHeight = Math.min(
@@ -699,11 +799,7 @@ export function FinancePage() {
   const marginChartHeight = useMemo(() => {
     const rows = marginChartData.length || 1;
     const rowH = isCompact ? 34 : 32;
-    return clamp(
-      rows * rowH + 78,
-      isCompact ? 240 : 240,
-      isCompact ? 400 : 400
-    );
+    return Math.max(rows * rowH + 78, isCompact ? 240 : 240);
   }, [marginChartData.length, isCompact]);
 
   const marginChartViewportHeight = Math.min(
@@ -789,11 +885,7 @@ export function FinancePage() {
   const paretoHeight = useMemo(() => {
     const rows = paretoData.length || 1;
     const rowH = isCompact ? 34 : 32;
-    return clamp(
-      rows * rowH + 92,
-      isCompact ? 260 : 260,
-      isCompact ? 440 : 440
-    );
+    return Math.max(rows * rowH + 92, isCompact ? 260 : 260);
   }, [paretoData.length, isCompact]);
 
   const paretoViewportHeight = Math.min(
@@ -904,14 +996,19 @@ export function FinancePage() {
                     </div>
   );
 
-  const pieHeight = isCompact ? 220 : 260;
+  const showDonutCallouts = !isNarrow;
+  const pieHeight = isCompact ? 240 : isNarrow ? 260 : 300;
+  const donutInnerRadius = isCompact ? "42%" : isNarrow ? "46%" : "50%";
+  const donutOuterRadius = isCompact ? "70%" : isNarrow ? "74%" : "78%";
+  const donutMarginX = showDonutCallouts ? (isCompact ? 68 : 110) : 24;
   const cashFlowHeight = isCompact ? 210 : 240;
 
   const surface =
     "border border-slate-200/70 bg-white shadow-sm shadow-slate-900/5";
-  const sectionWrap = "space-y-4";
-  const railCardClass = (base: string) =>
-    cn("min-w-0", isCompact ? "w-full" : `snap-start flex-none ${base}`);
+  const sectionWrap = "space-y-3";
+  const railCardClass = (base: string) => cn("min-w-0 w-full", base);
+  const railClassName =
+    "!px-0 sm:!mx-0 !overflow-x-visible sm:!overflow-x-visible sm:!snap-none";
 
   const platformLabel =
     platform === "ALL"
@@ -931,7 +1028,7 @@ export function FinancePage() {
 
   return (
     <Page className="w-full max-w-none min-w-0 bg-slate-50">
-      <div className="mx-auto w-full max-w-[1400px] space-y-5 px-3 py-3 sm:px-4 sm:py-4 md:px-6 md:py-5 lg:px-8 lg:py-6">
+      <div className="w-full space-y-4">
         {/* Header strip (clean + eye-catching, no clutter) */}
         <div
           className={cn(
@@ -1046,12 +1143,15 @@ export function FinancePage() {
             </div>
 
             {/* Trend + Top items */}
-            <MobileRail innerClassName="lg:grid lg:grid-cols-12 lg:gap-4">
+            <MobileRail
+              innerClassName="grid grid-cols-1 gap-3 md:grid-cols-2 lg:grid-cols-12 lg:gap-3"
+              className={cn("mb-3", railClassName)}
+            >
               <ChartCard
                 className={cn(
                   surface,
                   "rounded-3xl",
-                  railCardClass("min-w-[320px]"),
+                  railCardClass("lg:min-w-[320px]"),
                   "lg:col-span-8"
                 )}
                 title="Daily profit trend"
@@ -1159,7 +1259,7 @@ export function FinancePage() {
                 className={cn(
                   surface,
                   "rounded-3xl",
-                  railCardClass("min-w-[280px]"),
+                  railCardClass("lg:min-w-[280px]"),
                   "lg:col-span-4"
                 )}
                 title="Top items this period"
@@ -1202,12 +1302,15 @@ export function FinancePage() {
 
         {snapshot ? (
           <>
-            <MobileRail innerClassName="lg:grid lg:grid-cols-12 lg:gap-4">
+            <MobileRail
+              innerClassName="grid grid-cols-1 gap-3 md:grid-cols-2 lg:grid-cols-12 lg:gap-4"
+              className={railClassName}
+            >
               <ChartCard
                 className={cn(
                   surface,
                   "rounded-3xl",
-                  railCardClass("min-w-[320px]"),
+                  railCardClass("lg:min-w-[320px]"),
                   "lg:col-span-8"
                 )}
                 title="Report statistics"
@@ -1229,8 +1332,8 @@ export function FinancePage() {
                       </span>
                       <span
                         className={cn(
-                          "mt-2 font-semibold tracking-tight",
-                          isCompact ? "text-lg" : "text-2xl",
+                          "mt-2 font-semibold tracking-tight leading-tight",
+                          "text-[clamp(0.75rem,3.5vw,1.5rem)]",
                           stat.accent
                         )}
                       >
@@ -1313,79 +1416,100 @@ export function FinancePage() {
                 className={cn(
                   surface,
                   "rounded-3xl",
-                  railCardClass("min-w-[280px]"),
+                  railCardClass("lg:min-w-[280px]"),
                   "lg:col-span-4"
                 )}
+                bodyClassName="relative overflow-visible"
                 title="Expense split"
                 subtitle="Costs vs. profit"
-                badge={formatCurrencyPHP(snapshot.netProfit)}
                 compact={isCompact}
               >
-                <div className="grid gap-3 sm:grid-cols-2 sm:items-center">
-                  <ChartContainer height={pieHeight}>
-                    {donutHasData ? (
-                      <PieChart>
-                        <Tooltip
-                          content={
-                            <ChartTooltip
-                              valueFormatter={(v) => formatCurrencyPHP(v)}
+                <div className="mt-2 flex justify-center">
+                  <div className="w-full max-w-none overflow-visible">
+                    <div className="mx-auto my-1 rounded-2xl border border-slate-200/70 bg-white/90 p-2 sm:p-3">
+                      <ChartContainer height={pieHeight} className="overflow-visible">
+                        {donutHasData ? (
+                          <PieChart
+                            margin={{
+                              top: isCompact ? 12 : 16,
+                              bottom: isCompact ? 12 : 16,
+                              left: donutMarginX,
+                              right: donutMarginX,
+                            }}
+                            style={{ overflow: "visible" }}
+                          >
+                            <Tooltip
+                              content={
+                                <ChartTooltip
+                                  valueFormatter={(v) => formatCurrencyPHP(v)}
+                                />
+                              }
                             />
-                          }
-                        />
-                        <Pie
-                          data={donutSegments}
-                          dataKey="value"
-                          nameKey="label"
-                          innerRadius={isCompact ? 56 : 64}
-                          outerRadius={isCompact ? 84 : 92}
-                          paddingAngle={2}
-                          stroke="transparent"
-                        >
+                            <Pie
+                              data={donutSegments}
+                              dataKey="value"
+                              nameKey="label"
+                              innerRadius={donutInnerRadius}
+                              outerRadius={donutOuterRadius}
+                              paddingAngle={2}
+                              stroke="transparent"
+                              labelLine={false}
+                              label={showDonutCallouts ? renderDonutCallout : false}
+                              cx={showDonutCallouts ? (isCompact ? "50%" : "51%") : "50%"}
+                            >
+                              {donutSegments.map((segment) => (
+                                <Cell key={segment.label} fill={segment.color} />
+                              ))}
+                            </Pie>
+                          </PieChart>
+                        ) : (
+                          <div className="flex h-full items-center justify-center text-xs text-slate-500">
+                            {PH_COPY.finance.noExpenseData}
+                          </div>
+                        )}
+                      </ChartContainer>
+                      {!showDonutCallouts && donutHasData ? (
+                        <div className="mt-3 grid gap-2 text-xs text-slate-600 sm:grid-cols-2">
                           {donutSegments.map((segment) => (
-                            <Cell key={segment.label} fill={segment.color} />
+                            <div
+                              key={`legend-${segment.label}`}
+                              className="flex items-start gap-2 rounded-2xl border border-slate-200/70 bg-white/90 px-3 py-2"
+                            >
+                              <span
+                                className="mt-1 h-2.5 w-2.5 shrink-0 rounded-full"
+                                style={{ backgroundColor: segment.color }}
+                              />
+                              <div className="min-w-0">
+                                <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
+                                  <span
+                                    className="text-sm font-semibold"
+                                    style={{ color: segment.color }}
+                                  >
+                                    {formatPercent(segment.percent)}
+                                  </span>
+                                  <span className="font-semibold text-slate-900">
+                                    {segment.label}
+                                  </span>
+                                </div>
+                                <div className="text-[11px] text-slate-500">
+                                  {segment.description}
+                                </div>
+                                <div className="text-[11px] font-semibold text-slate-700">
+                                  {formatCurrencyPHP(segment.value)}
+                                </div>
+                              </div>
+                            </div>
                           ))}
-                        </Pie>
-                      </PieChart>
-                    ) : (
-                      <div className="flex h-full items-center justify-center text-xs text-slate-500">
-                        {PH_COPY.finance.noExpenseData}
-                      </div>
-                    )}
-                  </ChartContainer>
-
-                  {/* Legend list (more readable than raw donut only) */}
-                  <div className="space-y-2">
-                    {donutSegments.map((s) => (
-                      <div
-                        key={s.label}
-                        className="flex items-center justify-between gap-3 rounded-2xl border border-slate-200/70 bg-white px-3 py-2"
-                      >
-                        <div className="flex min-w-0 items-center gap-2">
-                          <span
-                            className="h-2.5 w-2.5 shrink-0 rounded-full"
-                            style={{ backgroundColor: s.color }}
-                          />
-                          <span className="truncate text-xs font-medium text-slate-700">
-                            {s.label}
-                          </span>
                         </div>
-                        <div className="text-right">
-                          <div className="text-xs font-semibold text-slate-900">
-                            {formatCurrencyPHP(s.value)}
-                          </div>
-                          <div className="text-[11px] text-slate-500">
-                            {formatPercent(s.percent)}
-                          </div>
-                        </div>
-                      </div>
-                    ))}
+                      ) : null}
+                    </div>
                   </div>
                 </div>
               </ChartCard>
             </MobileRail>
 
             {/* Profit analysis */}
-            <div className="space-y-3">
+            <div className="space-y-2">
               <div className={cn(surface, "rounded-3xl p-4 sm:p-5")}>
                 <p className="text-xs uppercase tracking-[0.35em] text-slate-400">
                   Profit analysis
@@ -1398,12 +1522,15 @@ export function FinancePage() {
                 </p>
               </div>
 
-              <MobileRail innerClassName="lg:grid lg:grid-cols-12 lg:gap-4">
+              <MobileRail
+                innerClassName="grid grid-cols-1 gap-3 md:grid-cols-2 lg:grid-cols-12 lg:gap-4"
+                className={railClassName}
+              >
                 <ChartCard
                   className={cn(
                     surface,
                     "rounded-3xl",
-                    railCardClass("min-w-[320px]"),
+                    railCardClass("lg:min-w-[320px]"),
                     "lg:col-span-4"
                   )}
                   title="Profit by product"
@@ -1439,7 +1566,7 @@ export function FinancePage() {
                   className={cn(
                     surface,
                     "rounded-3xl",
-                    railCardClass("min-w-[320px]"),
+                    railCardClass("lg:min-w-[320px]"),
                     "lg:col-span-4"
                   )}
                   title="Margin % by product"
@@ -1459,7 +1586,7 @@ export function FinancePage() {
                   className={cn(
                     surface,
                     "rounded-3xl",
-                    railCardClass("min-w-[320px]"),
+                    railCardClass("lg:min-w-[320px]"),
                     "lg:col-span-4"
                   )}
                   title="Contribution to total profit"
@@ -1533,7 +1660,8 @@ export function FinancePage() {
 
             {/* Tables */}
             <MobileRail
-              innerClassName="lg:grid lg:grid-cols-2 lg:gap-4"
+              innerClassName="grid grid-cols-1 gap-3 md:grid-cols-2 lg:grid-cols-2 lg:gap-4"
+              className={railClassName}
               data-tour="finance-tables"
             >
               <Card className={cn(surface, "rounded-3xl lg:col-span-1")}>
@@ -1547,36 +1675,34 @@ export function FinancePage() {
                       Walang sales pa in this period.
                     </div>
                   ) : (
-                    <div className="max-h-[280px] overflow-y-auto">
-                      <div className="overflow-x-auto">
-                        <table className="min-w-full text-left text-xs">
-                          <thead className="sticky top-0 z-10 border-b border-slate-200 bg-slate-50 text-xs uppercase tracking-wide text-slate-500">
-                            <tr>
-                              <th className="px-4 py-2">Session</th>
-                              <th className="px-4 py-2 text-right">Revenue</th>
-                              <th className="px-4 py-2 text-right">Profit</th>
+                    <div className="overflow-x-auto">
+                      <table className="min-w-full text-left text-xs">
+                        <thead className="sticky top-0 z-10 border-b border-slate-200 bg-slate-50 text-xs uppercase tracking-wide text-slate-500">
+                          <tr>
+                            <th className="px-4 py-2">Session</th>
+                            <th className="px-4 py-2 text-right">Revenue</th>
+                            <th className="px-4 py-2 text-right">Profit</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {sortedSessions.map((sessionEntry) => (
+                            <tr
+                              key={sessionEntry.liveSessionId}
+                              className="border-t border-slate-200 hover:bg-slate-50"
+                            >
+                              <td className="px-4 py-2 text-[11px] font-medium text-slate-900">
+                                {sessionEntry.title}
+                              </td>
+                              <td className="px-4 py-2 text-right text-[11px] text-slate-900">
+                                {formatCurrencyPHP(sessionEntry.revenue)}
+                              </td>
+                              <td className="px-4 py-2 text-right text-[11px] font-semibold text-emerald-700">
+                                {formatCurrencyPHP(sessionEntry.profit)}
+                              </td>
                             </tr>
-                          </thead>
-                          <tbody>
-                            {sortedSessions.map((sessionEntry) => (
-                              <tr
-                                key={sessionEntry.liveSessionId}
-                                className="border-t border-slate-200 hover:bg-slate-50"
-                              >
-                                <td className="px-4 py-2 text-[11px] font-medium text-slate-900">
-                                  {sessionEntry.title}
-                                </td>
-                                <td className="px-4 py-2 text-right text-[11px] text-slate-900">
-                                  {formatCurrencyPHP(sessionEntry.revenue)}
-                                </td>
-                                <td className="px-4 py-2 text-right text-[11px] font-semibold text-emerald-700">
-                                  {formatCurrencyPHP(sessionEntry.profit)}
-                                </td>
-                              </tr>
-                            ))}
-                          </tbody>
-                        </table>
-                      </div>
+                          ))}
+                        </tbody>
+                      </table>
                     </div>
                   )}
                 </CardContent>
@@ -1593,45 +1719,43 @@ export function FinancePage() {
                       Walang benta pa per item in this period.
                     </div>
                   ) : (
-                    <div className="max-h-[280px] overflow-y-auto">
-                      <div className="overflow-x-auto">
-                        <table className="min-w-full text-left text-xs">
-                          <thead className="sticky top-0 z-10 border-b border-slate-200 bg-slate-50 text-xs uppercase tracking-wide text-slate-500">
-                            <tr>
-                              <th className="px-4 py-2">Item</th>
-                              <th className="px-4 py-2 text-right">Qty</th>
-                              <th className="px-4 py-2 text-right">Revenue</th>
-                              <th className="px-4 py-2 text-right">Profit</th>
+                    <div className="overflow-x-auto">
+                      <table className="min-w-full text-left text-xs">
+                        <thead className="sticky top-0 z-10 border-b border-slate-200 bg-slate-50 text-xs uppercase tracking-wide text-slate-500">
+                          <tr>
+                            <th className="px-4 py-2">Item</th>
+                            <th className="px-4 py-2 text-right">Qty</th>
+                            <th className="px-4 py-2 text-right">Revenue</th>
+                            <th className="px-4 py-2 text-right">Profit</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {topProductsTable.map((product) => (
+                            <tr
+                              key={`${product.itemCode}-${product.name}`}
+                              className="border-t border-slate-200 hover:bg-slate-50"
+                            >
+                              <td className="px-4 py-2 text-[11px] text-slate-900">
+                                <span className="mr-2 rounded-md bg-slate-900/5 px-2 py-0.5 font-mono text-[10px] text-slate-600">
+                                  {safeText(product.itemCode)}
+                                </span>
+                                <span className="font-medium">
+                                  {product.name}
+                                </span>
+                              </td>
+                              <td className="px-4 py-2 text-right text-[11px] text-slate-900">
+                                {product.qtySold}
+                              </td>
+                              <td className="px-4 py-2 text-right text-[11px] text-slate-900">
+                                {formatCurrencyPHP(product.revenue)}
+                              </td>
+                              <td className="px-4 py-2 text-right text-[11px] font-semibold text-emerald-700">
+                                {formatCurrencyPHP(product.profit)}
+                              </td>
                             </tr>
-                          </thead>
-                          <tbody>
-                            {topProductsTable.map((product) => (
-                              <tr
-                                key={`${product.itemCode}-${product.name}`}
-                                className="border-t border-slate-200 hover:bg-slate-50"
-                              >
-                                <td className="px-4 py-2 text-[11px] text-slate-900">
-                                  <span className="mr-2 rounded-md bg-slate-900/5 px-2 py-0.5 font-mono text-[10px] text-slate-600">
-                                    {safeText(product.itemCode)}
-                                  </span>
-                                  <span className="font-medium">
-                                    {product.name}
-                                  </span>
-                                </td>
-                                <td className="px-4 py-2 text-right text-[11px] text-slate-900">
-                                  {product.qtySold}
-                                </td>
-                                <td className="px-4 py-2 text-right text-[11px] text-slate-900">
-                                  {formatCurrencyPHP(product.revenue)}
-                                </td>
-                                <td className="px-4 py-2 text-right text-[11px] font-semibold text-emerald-700">
-                                  {formatCurrencyPHP(product.profit)}
-                                </td>
-                              </tr>
-                            ))}
-                          </tbody>
-                        </table>
-                      </div>
+                          ))}
+                        </tbody>
+                      </table>
                     </div>
                   )}
                 </CardContent>
